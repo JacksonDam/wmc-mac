@@ -95,6 +95,9 @@ def run(cmd, env=None, quiet=False, substeps=False):
     """Runs a tool, passing its lines through; stops on failure. With
     substeps its own "step:" lines are shown as details under the current step."""
     global CHILD
+    # Named in a failure: the script, for Python, else the tool.
+    name = os.path.basename(next((a for a in cmd[1:] if a.endswith(".py")), cmd[1])
+                            if cmd[0] == sys.executable else cmd[0])
     if cmd[0] == sys.executable:
         cmd = [cmd[0], "-B"] + cmd[1:]          # no .pyc files beside the scripts (they may be inside an app)
     p = CHILD = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -119,7 +122,7 @@ def run(cmd, env=None, quiet=False, substeps=False):
     if p.wait() != 0:
         if quiet:
             print("\n".join(tail), flush=True)
-        fail("%s failed" % os.path.basename(cmd[1] if cmd[0] == sys.executable else cmd[0]))
+        fail("%s failed" % name)
 
 
 def default_output():
