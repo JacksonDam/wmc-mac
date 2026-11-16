@@ -1,0 +1,135 @@
+# name : keys from the start menu. A fresh install starts on TV > recorded tv.
+# Strips, top to bottom (they wrap): Extras, Pictures + Videos, Music, Movies, TV, Tasks.
+# `|` marks where the "before" frame is taken (default: before the last key).
+
+tv.recorded          : enter
+tv.setup             : right enter
+movies.library       : up enter
+movies.dvd           : up right enter
+music.library        : up up enter
+music.favorites      : up up right enter
+music.radio          : up up right right enter
+music.search         : up up right right right enter
+pictures.library     : up up up enter
+pictures.favorites   : up up up right enter
+pictures.videos      : up up up right right enter
+extras.library       : up up up up enter
+tasks.shutdown       : down left enter
+tasks.settings       : down enter
+tasks.sync           : down right enter
+tasks.extender       : down right right enter
+tasks.mediaonly      : down right right right enter
+
+# Settings: General, TV, Pictures, Music, DVD, Start Menu and Extras, Extender, Media Libraries
+settings.general     : down enter enter
+settings.tv          : down enter down enter
+settings.pictures    : down enter down down enter
+settings.music       : down enter down down down enter
+settings.dvd         : down enter down down down down enter
+settings.startmenu   : down enter down down down down down enter
+settings.extender    : down enter down down down down down down enter
+settings.libraries   : down enter down down down down down down down enter
+
+# Settings pages, by position in each list (names from looking at the frames).
+general.startup                : down enter enter enter
+general.effects                : down enter enter down enter
+general.setup                  : down enter enter down down enter
+general.parental               : down enter enter down down down enter
+general.download               : down enter enter down down down down enter
+general.optimization           : down enter enter down down down down down enter
+general.about                  : down enter enter down down down down down down enter
+general.privacy                : down enter enter down down down down down down down enter
+general.about.0                : down enter enter down down down down down down enter enter
+general.about.1                : down enter enter down down down down down down enter down enter
+general.about.2                : down enter enter down down down down down down enter down down enter
+general.about.3                : down enter enter down down down down down down enter down down down enter
+general.about.4                : down enter enter down down down down down down enter down down down down enter
+general.setup.0                : down enter enter down down enter enter
+general.setup.1                : down enter enter down down enter down enter
+general.setup.2                : down enter enter down down enter down down enter
+general.setup.3                : down enter enter down down enter down down down enter
+general.setup.4                : down enter enter down down enter down down down down enter
+general.setup.5                : down enter enter down down enter down down down down down enter
+general.privacy.0              : down enter enter down down down down down down down enter enter
+general.privacy.1              : down enter enter down down down down down down down enter down enter
+general.privacy.2              : down enter enter down down down down down down down enter down down enter
+settings.music.0               : down enter down down down enter enter
+settings.music.1               : down enter down down down enter down enter
+settings.music.2               : down enter down down down enter down down enter
+settings.music.3               : down enter down down down enter down down down enter
+settings.dvd.0                 : down enter down down down down enter enter
+settings.dvd.1                 : down enter down down down down enter down enter
+settings.dvd.2                 : down enter down down down down enter down down enter
+settings.startmenu.0           : down enter down down down down down enter enter
+settings.startmenu.1           : down enter down down down down down enter down enter
+settings.pictures.0            : down enter down down enter enter
+settings.pictures.1            : down enter down down enter down enter
+
+# Inside the libraries (the first Enter after opening one closes its
+# "Media Libraries" prompt, which a fresh install shows once).
+pictures.folder      : up up up enter wait3 enter wait2 enter
+pictures.open        : up up up enter wait3 enter wait2 enter wait3 enter
+pictures.slideshow   : up up up enter wait3 enter wait2 up up enter
+videos.folder        : up up up right right enter wait3 enter wait2 enter
+videos.play          : up up up right right enter wait3 enter wait2 enter wait3 enter
+music.album          : up up enter wait3 enter wait2 enter
+music.album.play     : up up enter wait3 enter wait2 enter wait3 enter
+music.artists        : up up enter wait3 enter wait2 up right enter
+music.songs          : up up enter wait3 enter wait2 up right right right enter
+music.playall        : up up enter wait3 enter wait2 up up up enter
+music.search.type    : up up right right right enter wait2 type=dow wait2 right enter
+music.album.details  : up up enter wait3 enter wait2 enter wait2 down down enter
+
+# TV and Extender pages (over the in-memory object store).
+settings.tv.0                  : down enter down enter enter
+settings.tv.1                  : down enter down enter down enter
+settings.tv.2                  : down enter down enter down down enter
+settings.tv.3                  : down enter down enter down down down enter
+settings.extender.add          : down enter down down down down down down enter wait2 enter
+settings.extender.options      : down enter down down down down down down enter wait2 down enter
+tv.recorded.title              : enter wait3 right
+tv.recorded.airdate            : enter wait3 right right
+tv.recorded.shared             : enter wait3 right right right
+
+# Now Playing (an album playing) and its buttons.
+music.np.songlist              : up up enter wait3 enter wait2 enter wait3 enter wait5 enter
+music.np.visualize             : up up enter wait3 enter wait2 enter wait3 enter wait5 down enter
+music.np.pictures              : up up enter wait3 enter wait2 enter wait3 enter wait5 down down enter
+music.np.shuffle               : up up enter wait3 enter wait2 enter wait3 enter wait5 down down down enter
+music.np.repeat                : up up enter wait3 enter wait2 enter wait3 enter wait5 down down down down enter
+music.np.buy                   : up up enter wait3 enter wait2 enter wait3 enter wait5 down down down down down enter
+startmenu.nowplaying           : up up enter wait3 enter wait2 enter wait3 enter wait5 back wait1 back wait1 back wait1 back wait2 down enter
+
+# Context menus (Ctrl+D: "more info", as on a Media Center keyboard).
+music.album.context            : up up enter wait3 enter wait2 ctrl+d
+music.np.context               : up up enter wait3 enter wait2 enter wait3 enter wait5 ctrl+d
+pictures.folder.context        : up up up enter wait3 enter wait2 ctrl+d
+videos.context                 : up up up right right enter wait3 enter wait2 ctrl+d
+
+# Every view of the libraries (the pivots along the top).
+music.genres                   : up up enter wait3 enter wait2 up right right enter
+music.playlists                : up up enter wait3 enter wait2 up right right right right enter
+music.composers                : up up enter wait3 enter wait2 up right right right right right enter
+music.years                    : up up enter wait3 enter wait2 up right right right right right right enter
+music.albumartists             : up up enter wait3 enter wait2 up right right right right right right right enter
+music.shared                   : up up enter wait3 enter wait2 up right right right right right right right right enter
+pictures.tags                  : up up up enter wait3 enter wait2 up right enter
+pictures.datetaken             : up up up enter wait3 enter wait2 up right right enter
+pictures.ratings               : up up up enter wait3 enter wait2 up right right right enter
+pictures.slideshows            : up up up enter wait3 enter wait2 up right right right right enter
+pictures.shared                : up up up enter wait3 enter wait2 up right right right right right enter
+videos.datetaken               : up up up right right enter wait3 enter wait2 up right enter
+videos.shared                  : up up up right right enter wait3 enter wait2 up right right enter
+movies.genre                   : up enter wait3 enter wait2 up right
+movies.year                    : up enter wait3 enter wait2 up right right
+movies.rating                  : up enter wait3 enter wait2 up right right right
+
+# The movie library is empty until folders are added to it: its prompt leads
+# to the Media Libraries wizard for movies.
+movies.add                     : up enter wait3 left enter
+movies.add.next                : up enter wait3 left enter wait2 enter
+
+# Windows Media files, played with FFmpeg: the WMA album (last of five) and the WMV video (last of three).
+music.wma.play       : up up enter wait3 enter wait2 right right right right enter wait2 enter
+videos.wmv.play      : up up up right right enter wait3 enter wait2 down down enter wait3
+videos.avi.play      : up up up right right enter wait3 enter wait2 down down down enter wait3

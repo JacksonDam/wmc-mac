@@ -1,0 +1,28 @@
+<Mcml xmlns="http://schemas.microsoft.com/2006/mcml">
+  <!-- Perspective: three panels of the same size, flat, turned 60 degrees
+       about the vertical axis, and turned 60 degrees about the horizontal
+       axis. The turned ones should narrow towards their far edge. -->
+  <UI Name="Default">
+    <Content>
+      <ColorFill Content="Black" Layout="Form">
+        <Children>
+          <ColorFill Content="White" MinimumSize="180,180" MaximumSize="180,180">
+            <LayoutInput>
+              <FormLayoutInput Left="Parent,0,20" Top="Parent,0,140"/>
+            </LayoutInput>
+          </ColorFill>
+          <ColorFill Content="Orange" MinimumSize="180,180" MaximumSize="180,180" CenterPointPercent="0.5,0.5,0.0" Rotation="60deg;0,1,0">
+            <LayoutInput>
+              <FormLayoutInput Left="Parent,0,230" Top="Parent,0,140"/>
+            </LayoutInput>
+          </ColorFill>
+          <ColorFill Content="Red" MinimumSize="180,180" MaximumSize="180,180" CenterPointPercent="0.5,0.5,0.0" Rotation="60deg;1,0,0">
+            <LayoutInput>
+              <FormLayoutInput Left="Parent,0,430" Top="Parent,0,140"/>
+            </LayoutInput>
+          </ColorFill>
+        </Children>
+      </ColorFill>
+    </Content>
+  </UI>
+</Mcml>

@@ -1,0 +1,204 @@
+# Calls in Media Center's assemblies that are rewritten at patch time.
+#   <declaring type>::<method>  =>  <stand-in method in WmcStandins.Compat>
+#   <declaring type>::<method>  =>  @guard        (at each call: an exception goes to
+#                                                  WmcStandins.Compat.Swallowed instead of onwards)
+#   <declaring type>::<method>  =>  @body <name>  (replace the method's own body by a call to
+#                                                  WmcStandins.Compat.<name>; every overload)
+#   <declaring type>::<method>  =>  @path         (at each call: the first string argument is a file
+#                                                  path; pass it through WmcStandins.Compat.FixPath)
+#   <declaring type>::<method>  =>  @path2        (the same for the first two string arguments)
+#   <declaring type>::<method>  =>  @default      (at each call: do nothing, return null/0/false)
+#   <declaring type>::<method>  =>  @stub         (replace the method's own body the same way;
+#                                                  needed for virtual and reflection calls)
+# Blank lines and lines starting with # are ignored.
+
+System.Diagnostics.Process::set_PriorityClass => Process_set_PriorityClass
+
+# The object store (guide, recordings, tuner set-up) keeps its objects in a
+# database reached through a C++/CLI assembly whose native half cannot run
+# here. The store runs over an empty in-memory database instead
+# (WmcStandins/Store): opening goes there, and large values ("blobs") are
+# kept by number instead of as database streams.
+MediaCenter.Store.SqlLite.ObjectStoreOpener::Open => @body Store_Open
+MediaCenter.Store.SqlLite.Blob::Load => @body Blob_Load
+MediaCenter.Store.SqlLite.Blob::Store => @body Blob_Store
+MediaCenter.Store.SqlLite.Blob::Release => @body Blob_Release
+Microsoft.MediaCenter.Store.ObjectStore::NewMutex => @body Store_NewMutex
+Microsoft.MediaCenter.Store.NativeMethods::WaitForMultipleObjects => Store_WaitForMultipleObjects
+Microsoft.MediaCenter.Store.ObjectType::CompileConstructor => @body Store_CompileConstructor
+Microsoft.MediaCenter.Pvr.PvrServiceSession::.ctor => @body PvrSession_Init
+System.Runtime.InteropServices.Marshal::GetHRForLastWin32Error => Marshal_GetHRForLastWin32Error
+
+# "Auto" strings are UTF-16 on Windows NT; Mono on a Mac reads them as UTF-8
+# (the same difference as CharSet.Auto, which the patcher fixes).
+System.Runtime.InteropServices.Marshal::PtrToStringAuto => Marshal_PtrToStringAuto
+Microsoft.MediaCenter.Guide.EPG::CheckFirstRunScanningTimeout => @default
+
+# Parts of the interface can be replaced by downloaded packages, looked up in
+# the store. With no store and no service to download from, there is never a
+# package: the copy that came with Media Center (Markup.dll) is used.
+Microsoft.MediaCenter.Utility.ResourceAttachment::GetResourceModule => @stub
+
+# Start-menu promotions for Microsoft's online content (needs the store and
+# services that no longer exist).
+MediaCenter.Home.BroadbandPromoQuicklink::Update => @default
+Microsoft.MediaCenter.Guide.EPG::GetActiveQuickLinkPromo => @default
+
+# Start-menu entries that ask the guide database whether there is TV content.
+MediaCenter.Home.NavigateToMoviesOnTVLibraryCommand::get_Available => @stub
+MediaCenter.Home.ProgramsExistInGuide::get_IsSatisfied => @stub
+Microsoft.MediaCenter.Utility.ObjectStoreUtility::SubscriptionShouldBeEstablished => @stub
+Microsoft.MediaCenter.Utility.ObjectStoreUtility::RegisterPackageSubscription => @stub
+
+# The TV guide. With no guide database there is no guide, no line-up and no
+# promotions; these answer "none" instead of opening the store.
+Microsoft.MediaCenter.Guide.EPG::IsGuideAvailable => @stub
+Microsoft.MediaCenter.Guide.EPG::HasBroadbandLineup => @stub
+Microsoft.MediaCenter.Guide.EPG::get_BroadbandLineup => @stub
+Microsoft.MediaCenter.Guide.EPG::HasHdTv => @stub
+Microsoft.MediaCenter.Guide.EPG::GetActiveMCPromo => @stub
+Microsoft.MediaCenter.Guide.EPG::get_IsDownloadingGuide => @stub
+
+# The Sports strip depends on a downloaded data package from a dead service.
+MediaCenter.Home.SportsAvailability::IsVisible => @stub
+Microsoft.MediaCenter.Utility.ObjectStoreUtility::EstablishAllSubscriptions => @stub
+Microsoft.MediaCenter.Utility.ObjectStoreUtility::get_Subscriptions => @stub
+Microsoft.MediaCenter.Guide.EPG::get_MasterLineup => @stub
+
+# Every piece of queued work on the UI thread runs through this call. Guarded,
+# so that a failure in one page does not end Media Center (WmcStandins/Guard.cs).
+Microsoft.MediaCenter.Queues.QueueItem::Dispatch => @guard
+
+# What Media Center tells a page while moving to or from it. Guarded one by
+# one so that a page that fails still leaves the page stack in order; the
+# guard then steps back off it and says so in a dialog.
+ServiceBus.UIFramework.XmlControl::DoOnLoad => @guard
+ServiceBus.UIFramework.XmlControl::DoPreNavigateAway => @guard
+ServiceBus.UIFramework.XmlControl::DoNavigateAway => @guard
+ServiceBus.UIFramework.XmlControl::DoNavigateTo => @guard
+ServiceBus.UIFramework.Page::DoPostNavigate => @guard
+ServiceBus.UIFramework.XmlControl::DoNavigateAnimations => @guard
+
+# COM objects that have managed stand-ins (WmcStandins/ComClasses.cs).
+System.Type::GetTypeFromCLSID => Type_GetTypeFromCLSID
+System.Runtime.InteropServices.Marshal::ReleaseComObject => Marshal_ReleaseComObject
+ServiceBus.UIFramework.AxHost::set_Site => AxHost_SetSite
+System.Runtime.InteropServices.Marshal::FinalReleaseComObject => Marshal_FinalReleaseComObject
+
+# Windows' special folders (native/core/paths.c has the layout).
+System.Environment::GetFolderPath => Environment_GetFolderPath
+
+# TV settings ask the guide database whether this region has closed captions.
+MediaCenter.Options.OptionsVideoClosedCaptionPage::get_ClosedCaptionEnabledForRegion => @stub
+
+# The Windows Media Player object, which Media Center hosts as an ActiveX
+# control for its music, picture and video libraries (WmcStandins/Wmp).
+ServiceBus.UIFramework.AxHost::CreateControl => AxHost_CreateControl
+
+# Work that Media Center runs on its own background threads, guarded for the
+# same reason as the UI thread's.
+ServiceBus.UIFramework.EhTask::RunTask => @guard
+
+# Cameras and phones attached over USB ("Windows Portable Devices"): none.
+MediaCenter.Acquisition.WPDDeviceUtility::GetWPDDevicesSync => @stub
+
+# Where a video was stopped, so that it can be resumed. Media Center keeps
+# these in its store; here they go in a small file (WmcStandins/Bookmarks.cs).
+Microsoft.MediaCenter.Guide.VideoFileBookmarkManager::.ctor => @body Bookmarks_Create
+Microsoft.MediaCenter.Guide.VideoFileBookmarkManager::GetBookmark => @body Bookmarks_Get
+Microsoft.MediaCenter.Guide.VideoFileBookmarkManager::UpdateBookmark => @body Bookmarks_Update
+Microsoft.MediaCenter.Guide.VideoFileBookmarkManager::Clear => @body Bookmarks_Clear
+
+# Windows "libraries": which folders make up Music, Pictures, Videos and
+# Recorded TV (WmcStandins/Libraries.cs).
+EHMedia.FnOAPIs::EhGetLocationsForLibrary => Libraries_GetLocations
+EHMedia.FnOAPIs::EhAddLocationToLibrary => Libraries_Add
+EHMedia.FnOAPIs::EhRemoveLocationFromLibrary => Libraries_Remove
+EHMedia.FnOAPIs::EhRemoveLocationFromLibraryAt => Libraries_RemoveAt
+EHMedia.FnOAPIs::EHGetDefaultSaveLocation => Libraries_DefaultSaveLocation
+Microsoft.MediaCenter.HomeMediaSharing.LibraryInterop::EhGetLocationsForLibrary => Libraries_GetLocations
+Microsoft.MediaCenter.HomeMediaSharing.LibraryInterop::EhGetLocationsForLibraryFromPath => Libraries_GetLocationsFromPath
+Microsoft.MediaCenter.HomeMediaSharing.LibraryInterop::EhAddLocationToLibrary => Libraries_Add
+Microsoft.MediaCenter.HomeMediaSharing.LibraryInterop::EhRemoveLocationFromLibrary => Libraries_Remove
+
+# The small pictures on a folder's tile are drawn with GDI+ from raw pixel
+# buffers, which Mono's GDI+ library cannot do; done natively instead.
+ServiceBus.UIFramework.ImageLoadingTask::DrawMiniThumbToImage => @body Thumbnails_DrawMini
+
+# Windows Media DRM: what a file's licence allows. Nothing here is protected.
+Microsoft.MediaCenter.Interop.UIHelper::EhGetPlaybackDRMInfo => Drm_Info
+Microsoft.MediaCenter.Interop.UIHelper::EhGetCDBurnDRMInfo => Drm_Info
+
+# Video files are played by the Mac (WmcStandins/Playback/MacPlayer.cs)
+# instead of the native player in mcplayerinterop.dll.
+Microsoft.MediaCenter.Playback.PlayerTable::FindPlayerType => Playback_FindPlayerType
+
+# The playback code's diagnostic log goes to the "trace" log channel.
+Microsoft.MediaCenter.Playback.Log::TraceError => @body PlaybackLog
+Microsoft.MediaCenter.Playback.Log::TraceWarning => @body PlaybackLog
+Microsoft.MediaCenter.Playback.Log::TraceInfo => @body PlaybackLog
+
+# Details about a video from Microsoft's online service (cast, synopsis,
+# who supplied them). The service is gone and its address was kept in the store.
+MediaCenter.Video.AttributionQuery::BeginPopulateAttributionData => @stub
+MediaCenter.Video.VideoDetailsUtility::get_VideoDetailsUrl => @stub
+
+# File paths. Media Center builds paths the Windows way (C:\..., backslashes)
+# and hands them to .NET's file classes, which on a Mac take them literally.
+# Each call that takes a path has it translated first (native/core/paths.c).
+System.IO.File::Exists => @path
+System.IO.File::Open => @path
+System.IO.File::OpenRead => @path
+System.IO.File::OpenText => @path
+System.IO.File::OpenWrite => @path
+System.IO.File::Create => @path
+System.IO.File::CreateText => @path
+System.IO.File::Delete => @path
+System.IO.File::GetAttributes => @path
+System.IO.File::SetAttributes => @path
+System.IO.File::GetCreationTime => @path
+System.IO.File::GetCreationTimeUtc => @path
+System.IO.File::SetCreationTimeUtc => @path
+System.IO.File::GetLastWriteTime => @path
+System.IO.File::GetLastWriteTimeUtc => @path
+System.IO.File::ReadAllText => @path
+System.IO.File::ReadAllBytes => @path
+System.IO.File::ReadAllLines => @path
+System.IO.File::WriteAllText => @path
+System.IO.File::WriteAllBytes => @path
+System.IO.File::AppendAllText => @path
+System.IO.File::Copy => @path2
+System.IO.File::Move => @path2
+System.IO.Directory::Exists => @path
+System.IO.Directory::CreateDirectory => @path
+System.IO.Directory::Delete => @path
+System.IO.Directory::GetFiles => @path
+System.IO.Directory::GetDirectories => @path
+System.IO.Directory::GetFileSystemEntries => @path
+System.IO.Directory::GetLastWriteTimeUtc => @path
+System.IO.FileInfo::.ctor => @path
+System.IO.DirectoryInfo::.ctor => @path
+System.IO.FileStream::.ctor => @path
+System.IO.StreamReader::.ctor => @path
+System.IO.StreamWriter::.ctor => @path
+System.Diagnostics.FileVersionInfo::GetVersionInfo => @path
+System.Drawing.Image::FromFile => @path
+System.Drawing.Bitmap::.ctor => @path
+System.Xml.XmlDocument::Load => @path
+System.Xml.XmlTextReader::.ctor => @path
+
+# The Windows version and edition come from native code in a C++/CLI
+# assembly (WmcStandins/Compat.cs says which are answered).
+Microsoft.MediaCenter.ProductInfo::GetSystemVersion => @body Product_SystemVersion
+Microsoft.MediaCenter.ProductInfo::GetProductEditionRaw => @body Product_EditionRaw
+
+# Extenders are found and served by native code in Mcx2Dvcs.dll
+# (WmcStandins/Extender.cs): the device manager exists, finds nothing.
+Microsoft.MediaCenter.NetworkConnectedDevices.CDeviceManager::.ctor => @body Extender_DeviceManagerInit
+Microsoft.MediaCenter.NetworkConnectedDevices.CDeviceManager::Start => @stub
+Microsoft.MediaCenter.NetworkConnectedDevices.CDeviceManager::Stop => @stub
+Microsoft.MediaCenter.NetworkConnectedDevices.CDeviceManager::RefreshDeviceState => @stub
+
+# Picture requirements without their managed colour-filter list on the way
+# to the engine (WmcStandins/Images.cs).
+Microsoft.MediaCenter.UI.Drawing.BitmapInfo::DecodeBitmap => Bitmap_Decode

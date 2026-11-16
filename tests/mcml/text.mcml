@@ -1,0 +1,21 @@
+<Mcml xmlns="http://schemas.microsoft.com/2006/mcml">
+  <!-- Text on a solid background. -->
+  <UI Name="Default">
+    <Content>
+      <ColorFill Content="DarkBlue" Layout="Form">
+        <Children>
+          <Text Content="Hello from macOS" Color="White" Font="Segoe UI,36">
+            <LayoutInput>
+              <FormLayoutInput Left="Parent,0,40" Top="Parent,0,30"/>
+            </LayoutInput>
+          </Text>
+          <Text Content="Windows Media Center UI framework, running on Mono" Color="Orange" Font="Segoe UI,18">
+            <LayoutInput>
+              <FormLayoutInput Left="Parent,0,40" Top="Parent,0,110"/>
+            </LayoutInput>
+          </Text>
+        </Children>
+      </ColorFill>
+    </Content>
+  </UI>
+</Mcml>

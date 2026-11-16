@@ -1,0 +1,16 @@
+<Mcml xmlns="http://schemas.microsoft.com/2006/mcml">
+  <!-- First pixels: two solid rectangles, no text and no images. -->
+  <UI Name="Default">
+    <Content>
+      <ColorFill Content="DarkBlue" Layout="Form">
+        <Children>
+          <ColorFill Content="Orange" MinimumSize="200,120" MaximumSize="200,120">
+            <LayoutInput>
+              <FormLayoutInput Left="Parent,0,40" Top="Parent,0,30"/>
+            </LayoutInput>
+          </ColorFill>
+        </Children>
+      </ColorFill>
+    </Content>
+  </UI>
+</Mcml>

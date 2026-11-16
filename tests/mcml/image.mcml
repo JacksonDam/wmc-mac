@@ -1,0 +1,22 @@
+<Mcml xmlns="http://schemas.microsoft.com/2006/mcml">
+  <!-- Pictures from Media Center's own resource DLL, with text on top. -->
+  <UI Name="Default">
+    <Content>
+      <Panel Layout="Form">
+        <Children>
+          <Text Content="Media Center resources" Color="White" Font="Segoe Media Center Light,30">
+            <LayoutInput>
+              <FormLayoutInput Left="Parent,0,40" Top="Parent,0,30"/>
+            </LayoutInput>
+          </Text>
+          <Graphic Content="res://ehres!COMMON.WINDOWSRVLOGO.MED.PNG">
+            <LayoutInput>
+              <FormLayoutInput Left="Parent,0,40" Top="Parent,0,100"/>
+            </LayoutInput>
+          </Graphic>
+          <Graphic Content="res://ehres!COMMON.BACKGROUND.PNG" Layout="Fill"/>
+        </Children>
+      </Panel>
+    </Content>
+  </UI>
+</Mcml>
