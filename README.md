@@ -1,9 +1,14 @@
 # Windows Media Center on macOS
 
+<p align="center">
+  <img src="docs/images/startmenu.jpg" width="100%" />
+</p>
+
 Take Windows Media Center from a Windows 7 disc image and make a Mac app of
 it that runs natively on Apple silicon. It is your responsibility to have a legally-obtained copy of Windows 7 SP1 (64-bit).
 
-Nothing of Microsoft's is in this repository, the installer or the tools.
+Apart from the screenshot above, nothing of Microsoft's is in this
+repository, the installer or the tools.
 Media Center comes from your disc image, and the app is made from it on
 your Mac. What is here is original code.
 
