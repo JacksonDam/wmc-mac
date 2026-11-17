@@ -69,10 +69,10 @@ tools/make_app.sh ~/Downloads/windows7.iso
 
 Both install Apple's Command Line Tools if they are missing (macOS shows a
 dialog) and get the rest themselves: 7-Zip, Mono, Mono's picture library and
-FFmpeg. The first run downloads about 190 MB and takes under a minute;
-later ones take about 20 seconds. **Windows Media Center.app** (about
-240 MB) goes in `/Applications`. The tools and work files (about 800 MB)
-stay in `~/Library/Caches/Windows Media Center Builder`; `--output` and
+FFmpeg. The first run downloads about 190 MB and takes under a minute to 
+build on an M4 Mac mini; repeat builds take about 20 seconds. **Windows Media 
+Center.app** (about 240 MB) goes in `/Applications`. The tools and work 
+files (about 800 MB) stay in `~/Library/Caches/Windows Media Center Builder`; `--output` and
 `--work` choose other folders.
 
 ## Use
