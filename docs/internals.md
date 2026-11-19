@@ -78,7 +78,10 @@ C# with `VISTA` defined for Vista; `make_app.py` builds Vista's in a folder
 of its own (`build-vista`) and names the app "Windows Media Center (Vista)",
 with its own bundle id and settings. The patcher lists every rule in
 `redirects.txt` that matched nothing, which is where a renamed method shows
-up first: rules for the other version simply match nothing.
+up first: rules for the other version simply match nothing. A rule that
+must not apply to the other version (its target exists only in one build
+of our C#) starts with `[vista]` or `[7]`; `build.py` tells the patcher
+which one it is patching (`WMC_RELEASE`).
 
 Where Vista differs:
 
@@ -96,7 +99,9 @@ Where Vista differs:
   The patcher turns that `new` into `Compat.Vista_NewFilePlayer`
   (a `Type::.ctor => Name` rule), and `Playback/VistaPlayer.cs` plays
   through the same native player as Windows 7's stand-in, into the dynamic
-  surface whose id comes with `Initialize`.
+  surface whose id comes with `Initialize`. Media Center calls it from a
+  thread without a message loop, so the end of the file is watched for on
+  a pool thread and reported (`EndOfMedia`) on the UI thread.
 - **Object store:** an older interface (no sessions; rowsets work with row
   and accessor handles, and find rows again by bookmark):
   `Store/VistaStore.cs` over the same tables and cursor
@@ -105,8 +110,13 @@ Where Vista differs:
   error shows up as a page that freezes.
 - **Pictures** are decoded through `EhCreateBitmapFromImageData`, as
   24-bit rows bottom row first (the callers pass a negative stride).
-- **Not yet:** recorded TV asks the recording service's `ResourceMgr`, which
-  has no stand-in, and reports missing components.
+- **Recording service:** Vista asks for the TV recording service
+  (`ResourceMgrClass`) after a video and on recorded TV, three times two
+  seconds apart, then reports "component registration failure". Two
+  `[vista]` rules (`VistaTv.cs`) answer "not installed" at once and keep
+  it quiet: recorded TV says no shows have been recorded. (A stand-in for
+  the class itself is not possible: some callers keep it in fields typed
+  as the class, whose calls go to the class's own slots.)
 
 ## Windows Media and AVI files
 

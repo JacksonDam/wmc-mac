@@ -197,7 +197,7 @@ def step_standins():
 
 def step_patch():
     os.makedirs(APP, exist_ok=True)
-    env = dict(os.environ, WMC_REDIRECTS=os.path.join(ROOT, "managed", "redirects.txt"))
+    env = dict(os.environ, WMC_REDIRECTS=os.path.join(ROOT, "managed", "redirects.txt"), WMC_RELEASE=release())
     run([MONO, WMCTOOL, "patch", EHOME, APP] + FRIENDS, env=env)
     # Everything that is not a .NET assembly (resources, fonts, data) is used
     # as it is: link it into the app folder.

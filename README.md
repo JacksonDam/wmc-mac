@@ -31,7 +31,6 @@ Doesn't work yet:
 - Visualizations (they relied on Windows Media Player), rewinding, and
   formats such as `.mkv`.
 - Playlists last one session, and videos show "Unknown length".
-- Vista's Media Center: recorded TV reports missing components.
 
 Tested with the English Windows 7 SP1 and Windows Vista SP2 discs (Home
 Premium, 64-bit) on macOS 27. It is built for macOS 11 and later, but has not been run on macOS 11

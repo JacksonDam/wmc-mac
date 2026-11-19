@@ -11,7 +11,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using ehiPlay;
-using Timer = Microsoft.MediaCenter.UI.Timer;
+using Timer = System.Threading.Timer;
 
 namespace WmcStandins
 {
@@ -111,7 +111,7 @@ namespace WmcStandins.Playback
 
         void CloseVideo()
         {
-            if (_timer != null) _timer.Stop();
+            if (_timer != null) _timer.Change(Timeout.Infinite, Timeout.Infinite);
             if (_video != IntPtr.Zero) wmc_video_close(_video);
             _video = IntPtr.Zero;
         }
@@ -147,29 +147,27 @@ namespace WmcStandins.Playback
             SetState(PlayerState.state_Stop);
         }
 
-        // The end of the file is noticed on the UI thread, where Media Center
+        // The end of the file is watched for on a pool thread (Media Center
+        // drives the player from a thread with no message loop, where a UI
+        // timer never fires) and reported on the UI thread, where Media Center
         // expects EndOfMedia (it acts on it at once).
         void Watch()
         {
-            if (_timer == null)
-            {
-                _timer = new Timer();
-                _timer.Interval = 100;
-                _timer.AutoRepeat = true;
-                _timer.Tick += delegate { Tick(); };
-            }
-            _timer.Start();
+            if (_timer == null) _timer = new Timer(delegate { Tick(); }, null, Timeout.Infinite, Timeout.Infinite);
+            _timer.Change(100, 100);
         }
 
         void Tick()
         {
-            if (_video == IntPtr.Zero) { _timer.Stop(); return; }
-            if (wmc_video_state(_video) == 3 && !_endOfMedia)
+            IntPtr video = _video;
+            if (video == IntPtr.Zero || _endOfMedia) return;
+            if (wmc_video_state(video) != 3) return;
+            _endOfMedia = true;
+            Log("end of media");
+            Microsoft.MediaCenter.UI.Application.DeferredInvoke(delegate
             {
-                _endOfMedia = true;
-                Log("end of media");
-                if (_events != null) _events.EndOfMedia(null);
-            }
+                if (_events != null && _video == video) _events.EndOfMedia(null);
+            });
         }
 
         public override long GetPosition() { return _video == IntPtr.Zero ? 0 : (long)(wmc_video_position(_video) * 100); }
@@ -180,8 +178,11 @@ namespace WmcStandins.Playback
         public override void SeekToAbsPosition(long l10ms)
         {
             if (_video == IntPtr.Zero) return;
-            double seconds = Math.Max(0, Math.Min(l10ms / 100.0, wmc_video_duration(_video)));
-            _endOfMedia = false;
+            double length = wmc_video_duration(_video);
+            double seconds = Math.Max(0, Math.Min(l10ms / 100.0, length));
+            // (At the end Media Center seeks to the end: that is no new start,
+            // or the end would be reported again and again.)
+            if (seconds < length - 0.05) _endOfMedia = false;
             wmc_video_seek(_video, seconds);
         }
 

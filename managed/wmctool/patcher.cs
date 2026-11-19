@@ -43,10 +43,19 @@ static class Patcher
             table = Path.Combine(root, "managed", "redirects.txt");
         }
         if (!File.Exists(table)) throw new FileNotFoundException("the table of calls to patch is missing", table);
+        // "[vista] rule" or "[7] rule": only when patching that Media Center
+        // (WMC_RELEASE, set by build.py).
+        string release = Environment.GetEnvironmentVariable("WMC_RELEASE") ?? "7";
         foreach (string raw in File.ReadAllLines(table))
         {
             string line = raw.Trim();
             if (line.Length == 0 || line.StartsWith("#")) continue;
+            if (line.StartsWith("["))
+            {
+                int close = line.IndexOf(']');
+                if (close < 0 || line.Substring(1, close - 1) != release) continue;
+                line = line.Substring(close + 1).Trim();
+            }
             string[] parts = line.Split(new[] { "=>" }, StringSplitOptions.None);
             if (parts.Length != 2) continue;
             string key = parts[0].Trim(), what = parts[1].Trim();
