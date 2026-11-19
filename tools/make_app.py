@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Make a Mac app of Windows Media Center from your own copy of it.
 
-    make_app.py <windows7.iso> [--output FOLDER] [--work FOLDER]
+    make_app.py <windows.iso> [--output FOLDER] [--work FOLDER]
                 [--name NAME] [--no-check]
+
+The disc image is Windows 7 or Windows Vista. The app is called "Windows
+Media Center", or "Windows Media Center (Vista)" for Vista's, so that both
+can be kept (each has its own settings).
 
 --output     where the app goes (default: /Applications if you can write
              there, else ~/Applications). An app of the same name is replaced.
@@ -30,8 +34,13 @@ TOOLS = os.path.join(ROOT, "tools")
 sys.path.insert(0, TOOLS)
 import peinfo  # noqa: E402
 
-BUNDLE_ID = "local.wmc-mac.media-center"
+BUNDLE_ID = "local.wmc-mac.media-center"           # Vista's: + "-vista"
 MACOS_MIN = (11, 0)     # the oldest macOS the app runs on (Big Sur)
+
+
+def is_vista(ehome):
+    """Vista's Media Center is version 6.0 (Windows 7's 6.1)."""
+    return peinfo.version(os.path.join(ehome, "ehshell.dll")).startswith("6.0.")
 
 
 def step(text):
@@ -145,7 +154,7 @@ def unpack(installer, work, toolchain):
         shutil.rmtree(source)
     env = dict(os.environ, WMC_TOOLCHAIN=toolchain)
     if not installer.lower().endswith(".iso"):
-        fail("expected a Windows 7 disc image (.iso)")
+        fail("expected a Windows 7 or Windows Vista disc image (.iso)")
     run([sys.executable, "-I", os.path.join(TOOLS, "extract_iso.py"), installer, source], env=env)
     with open(stamp_file, "w") as f:
         f.write(stamp)
@@ -156,8 +165,10 @@ def build(source, work, toolchain, ffmpeg):
     """The build; the native part (which needs FFmpeg) last, so that FFmpeg's
     own build (started in the background at the beginning) has the longest
     time to finish."""
-    env = dict(os.environ, WMC_TOOLCHAIN=toolchain, WMC_TREE=os.path.join(source, "tree"),
-               WMC_BUILD=os.path.join(work, "build"))
+    # Each Media Center version builds in a folder of its own: the build only
+    # adds and replaces files, so one made after the other would mix them.
+    build_dir = os.path.join(work, "build-vista" if is_vista(os.path.join(source, "tree", "ehome")) else "build")
+    env = dict(os.environ, WMC_TOOLCHAIN=toolchain, WMC_TREE=os.path.join(source, "tree"), WMC_BUILD=build_dir)
     parts = [("tool", "Building the metadata tool"),
              ("gen", "Reading Media Center's interfaces"),
              ("patch", "Patching Media Center's assemblies"),
@@ -173,7 +184,7 @@ def build(source, work, toolchain, ffmpeg):
     BAR.begin("native")
     step("Compiling the stand-ins for Windows")
     run([sys.executable, "-I", os.path.join(TOOLS, "build.py"), "native"], env=env, quiet=True)
-    return os.path.join(work, "build")
+    return build_dir
 
 
 class FFmpegBuild:
@@ -347,7 +358,7 @@ def assemble(name, source, build_dir, toolchain, work):
     info = {
         "CFBundleDevelopmentRegion": "en",
         "CFBundleExecutable": name,
-        "CFBundleIdentifier": BUNDLE_ID,
+        "CFBundleIdentifier": BUNDLE_ID + ("-vista" if is_vista(ehome) else ""),
         "CFBundleInfoDictionaryVersion": "6.0",
         "CFBundleName": name,
         "CFBundleDisplayName": name,
@@ -414,7 +425,7 @@ def main():
     args = sys.argv[1:]
     installer = None
     output = work = None
-    name = "Windows Media Center"
+    name = None             # from the disc (see the top)
     checking = True
     while args:
         a = args.pop(0)
@@ -467,6 +478,8 @@ def main():
          "--parts", "7zip,mono,gdiplus"], substeps=True)
     BAR.begin("unpack")
     source = unpack(installer, work, toolchain)
+    vista = is_vista(os.path.join(source, "tree", "ehome"))
+    name = name or ("Windows Media Center (Vista)" if vista else "Windows Media Center")
     BAR.begin("build")
     build_dir = build(source, work, toolchain, ffmpeg)
     BAR.begin("assemble")

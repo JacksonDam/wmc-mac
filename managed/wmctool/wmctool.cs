@@ -251,6 +251,10 @@ static class WmcTool
     static string Declare(Layout l, string comment)
     {
         var sb = new StringBuilder();
+        // SP_HAS_<struct>_<field>: the engine's code for a field that only
+        // some Media Center versions send is compiled only where it exists.
+        var has = new StringBuilder();
+        string bare = l.CName.StartsWith("struct ") ? l.CName.Substring(7) : l.CName;
         sb.AppendFormat("/* {0} */\n", comment);
         sb.AppendFormat("{0} {{\n", l.CName);
         int pos = 0, pad = 0;
@@ -259,11 +263,13 @@ static class WmcTool
             if (f.Offset > pos) sb.AppendFormat("    uint8_t _pad{0}[{1}];\n", pad++, f.Offset - pos);
             if (f.Offset < pos) { sb.AppendFormat("    /* overlapping field {0} at {1} omitted */\n", f.Name, f.Offset); continue; }
             sb.AppendFormat("    {0} {1}; /* +{2} {3} */\n", f.Type.CName, f.Name, f.Offset, f.Comment);
+            has.AppendFormat("#define SP_HAS_{0}_{1} 1\n", bare, f.Name);
             pos = f.Offset + f.Type.Size;
         }
         if (l.Size > pos) sb.AppendFormat("    uint8_t _pad{0}[{1}];\n", pad++, l.Size - pos);
         sb.Append("} __attribute__((packed));\n");
-        sb.AppendFormat("_Static_assert(sizeof({0}) == {1}, \"layout\");\n\n", l.CName, l.Size);
+        sb.AppendFormat("_Static_assert(sizeof({0}) == {1}, \"layout\");\n", l.CName, l.Size);
+        sb.Append(has).Append("\n");
         return sb.ToString();
     }
 
@@ -275,6 +281,7 @@ static class WmcTool
         var tables = new StringBuilder();
         var sizes = new List<string>();
         var classNames = new List<string>();
+        var hasMessages = new StringBuilder();   // SP_HAS_MSG_<class>_<message>: what this version sends
         int messages = 0;
 
         foreach (var type in AllTypes(asm.MainModule).OrderBy(t => t.FullName, StringComparer.Ordinal))
@@ -315,6 +322,7 @@ static class WmcTool
                 s_msgNames[x.Type.FullName] = mname;
                 var l = LayoutOf(x.Type);
                 enums.AppendFormat("    SpMsg_{0}_{1} = {2},\n", cls, mname, x.Match.Groups[1].Value);
+                hasMessages.AppendFormat("#define SP_HAS_MSG_{0}_{1} 1\n", cls, mname);
                 sizes.Add(x.Type.FullName + "\t" + l.Size);
                 messages++;
             }
@@ -352,6 +360,7 @@ static class WmcTool
         sb.Append("\n");
         foreach (var d in s_structDecls) sb.Append(d);
         sb.Append(enums);
+        sb.Append(hasMessages);
         File.WriteAllText(outPath, sb.ToString());
         File.WriteAllLines(outPath + ".sizes.tsv", sizes);
         // Message names by class, for the engine's log.

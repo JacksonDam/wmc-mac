@@ -343,7 +343,10 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
 // not what an earlier surface left in the pool.
 - (void)put:(const uint8_t *)block stride:(int)stride format:(uint32_t)format x:(int)bx y:(int)by width:(int)bw height:(int)bh {
     SpRectF in = self.content;
-    BOOL inset = in.w != _location.w || in.h != _location.h;
+    // (A surface that is the whole pool has no location, and no room for a
+    // gutter around it: Vista's slide show pools have a gutter all the same.)
+    BOOL whole = _location.w <= 0 || _location.h <= 0;
+    BOOL inset = !whole && (in.w != _location.w || in.h != _location.h);
     int gx = inset ? _pool.gutterX : 0, gy = inset ? _pool.gutterY : 0;
     int l = bx == (int)in.x ? gx : 0, r = bx + bw == (int)(in.x + in.w) ? gx : 0;
     int t = by == (int)in.y ? gy : 0, b = by + bh == (int)(in.y + in.h) ? gy : 0;
@@ -477,6 +480,17 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
             break;
         }
         case SpMsg_Surface_Clear: {
+#ifndef SP_HAS_Sp_RemoteSurface_Clear_rcContentPxl
+            // Vista's Clear names no area or colour: the whole surface goes
+            // back to empty.
+            int w = (int)_location.w, h = (int)_location.h;
+            if (w > 0 && h > 0 && w < 16384 && h < 16384 && _pool.texture) {
+                uint32_t *fill = malloc((size_t)w * (size_t)h * 4);
+                for (size_t i = 0; i < (size_t)w * (size_t)h; i++) fill[i] = _pool.emptyColor;
+                [_pool upload:(const uint8_t *)fill stride:w * 4 format:2132104u rect:_location];
+                free(fill);
+            }
+#else
             const struct Sp_RemoteSurface_Clear *m = (const void *)msg;
             int w = m->rcContentPxl.m_width, h = m->rcContentPxl.m_height;
             if (w > 0 && h > 0 && w < 16384 && h < 16384) {
@@ -491,6 +505,7 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
                                  y:m->rcContentPxl.m_y];
                 free(fill);
             }
+#endif
             break;
         }
         case SpMsg_Surface_SetStorageSize: {
@@ -542,16 +557,21 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
              (unsigned long)buffer.data.length);
         return;
     }
+#ifdef SP_HAS_Sp_RemoteRasterizer_LoadRawImage_offset
+    int x = m->offset.m_x, y = m->offset.m_y;
+#else
+    int x = 0, y = 0;     // Vista: always the surface's top left
+#endif
     WLOG("img", "LoadRawImage %dx%d stride %d format %#x -> surface %#x at %g,%g %gx%g%s (+%d,%d)", w, h, stride,
          m->info.nFormat, surface.handle, surface.location.x, surface.location.y, surface.location.w,
-         surface.location.h, surface.rotated ? " turned" : "", m->offset.m_x, m->offset.m_y);
+         surface.location.h, surface.rotated ? " turned" : "", x, y);
     [surface uploadPixels:buffer.data.bytes
                    stride:stride
                    format:m->info.nFormat
                     width:w
                    height:h
-                      atX:m->offset.m_x
-                        y:m->offset.m_y];
+                      atX:x
+                        y:y];
 }
 
 @end

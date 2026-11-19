@@ -1,6 +1,9 @@
 // Where each video was stopped, so that it can be resumed from there.
 // Media Center keeps this in its object store; with no store it lives in a
 // tab-separated file: name, seconds, expiry (ticks).
+// Windows 7 only: Vista's Media Center has no VideoFileBookmarkManager.
+#if !VISTA
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -109,3 +112,5 @@ namespace WmcStandins
         }
     }
 }
+
+#endif

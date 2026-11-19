@@ -65,21 +65,48 @@ test media and the picture sheets).
 
 ## Sources of Media Center
 
-- **Windows 7 disc** (`tools/extract_iso.py`): Media Center 6.1.7601. The
-  disc keeps each edition as an image in `sources/install.wim`; the first
-  one with `Windows/ehome` is used. Its registry entries come from that
-  image's `SOFTWARE` hive (`tools/hive.py` reads the hive format and picks
-  Media Center's settings and COM registrations; the image was serviced as
-  drive D:, so `D:\` becomes `C:\`).
-- **8.1 installer** (`tools/extract_msi.py`): Media Center 6.3.9600, as
-  repackaged for Windows 10; registry entries from its `Install.reg`.
+A Windows 7 disc gives Media Center 6.1.7601, a Windows Vista SP2 disc
+6.0.6002 (`tools/extract_iso.py` handles both). The disc keeps each edition
+as an image in `sources/install.wim`; the first one with `Windows/ehome` is
+used. Its registry entries come from that image's `SOFTWARE` hive
+(`tools/hive.py` reads the hive format and picks Media Center's settings and
+COM registrations; the image was serviced as drive D:, so `D:\` becomes
+`C:\`).
 
-The two differ little where this project touches them: Windows 7 has one
-window message fewer (generated names carry no message numbers, so the
-engine compiles against either), and opens its database through
-`ObjectStoreOpener` where 8.1 has `ObjectStoreManager`. The patcher lists
-every rule in `redirects.txt` that matched nothing, which is where a
-renamed method shows up first.
+`build.py` tells the two apart by `ehshell.dll`'s version and compiles our
+C# with `VISTA` defined for Vista; `make_app.py` builds Vista's in a folder
+of its own (`build-vista`) and names the app "Windows Media Center (Vista)",
+with its own bundle id and settings. The patcher lists every rule in
+`redirects.txt` that matched nothing, which is where a renamed method shows
+up first: rules for the other version simply match nothing.
+
+Where Vista differs:
+
+- **Render protocol:** four messages differ (no `FormWindow.SetIcon`,
+  `Surface.Clear` without an area, `Rasterizer.LoadRawImage` without an
+  offset, an extra `VideoPool.OnFrameReady`). The protocol header has an
+  `SP_HAS_<struct>_<field>` and `SP_HAS_MSG_<class>_<message>` macro for
+  everything the installed version has, and the engine is compiled
+  against whichever it finds.
+- **Timers:** Vista's UI framework runs its time-outs on window-less
+  thread timers (`SetTimer` with a callback, `WM_TIMER` from the message
+  loop: `native/core/threadq.c`). Windows 7's never calls `SetTimer`.
+- **Video:** there is no managed player table: Vista makes a COM player
+  (`ehiPlay.WmpOcxPlayerClass`) for files and drives it through `IPlayer`.
+  The patcher turns that `new` into `Compat.Vista_NewFilePlayer`
+  (a `Type::.ctor => Name` rule), and `Playback/VistaPlayer.cs` plays
+  through the same native player as Windows 7's stand-in, into the dynamic
+  surface whose id comes with `Initialize`.
+- **Object store:** an older interface (no sessions; rowsets work with row
+  and accessor handles, and find rows again by bookmark):
+  `Store/VistaStore.cs` over the same tables and cursor
+  (`MemoryDatabase.cs`) as Windows 7's. The store allocates ids under a
+  spin lock in shared memory that an exception leaves held, so a store
+  error shows up as a page that freezes.
+- **Pictures** are decoded through `EhCreateBitmapFromImageData`, as
+  24-bit rows bottom row first (the callers pass a negative stride).
+- **Not yet:** recorded TV asks the recording service's `ResourceMgr`, which
+  has no stand-in, and reports missing components.
 
 ## Windows Media and AVI files
 
@@ -216,7 +243,9 @@ on Windows, instead of being reported and stepped around (see Guard below).
 
 `tools/crawl.py` opens every place listed in `tools/crawl_targets.txt` (each
 start-menu tile, each settings page, folders, albums, playing a song, a
-picture, a video), each in its own offscreen run from a freshly installed
+picture, a video; Vista's start menu is laid out differently:
+`--targets tools/crawl_targets_vista.txt` with a Vista `WMC_TREE` and
+`WMC_BUILD`), each in its own offscreen run from a freshly installed
 registry and a made-up media folder (`tools/make_fixtures.py`), and reports
 what stopped, what froze, which exceptions were guarded and which unwritten
 functions were reached. `build/crawl/overview_*.png` shows every target before

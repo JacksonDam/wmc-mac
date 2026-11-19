@@ -1,5 +1,7 @@
 // Entry points from Media Center's object store into the in-memory database
-// (see managed/redirects.txt, "The object store").
+// (see managed/redirects.txt, "The object store"). Windows 7's store and
+// Vista's (an older interface: VistaStore.cs) open differently; the rest is
+// shared where both make the call.
 using System;
 using System.Collections.Generic;
 
@@ -7,6 +9,16 @@ namespace WmcStandins
 {
     public static partial class Compat
     {
+#if VISTA
+        // MediaCenter.Store.SqlLite.ObjectStoreOpener.Open: the store opens
+        // its database through here.
+        public static MediaCenter.Store.OleDB.ObjectStore Store_Open(string fileName)
+        {
+            var store = new Store.VistaObjectStore();
+            store.OpenInMemory(fileName);
+            return store;
+        }
+#else
         // MediaCenter.Store.SqlLite.ObjectStoreOpener.Open: the store opens
         // its database through here.
         public static MediaCenter.Store.OleDB.ObjectStore Store_Open(string fileName, bool isCollecting)
@@ -16,6 +28,7 @@ namespace WmcStandins
             store.OpenInMemory(fileName);
             return store;
         }
+#endif
 
         // The store guards its files against other processes with named
         // mutexes ("Global\\MCStore..."). There are no other processes here:
@@ -50,6 +63,14 @@ namespace WmcStandins
             }
         }
 
+        // Not in Mono: the last Win32 error as an HRESULT.
+        public static int Marshal_GetHRForLastWin32Error()
+        {
+            int e = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+            return e == 0 ? 0 : unchecked((int)(0x80070000u | (uint)(e & 0xFFFF)));
+        }
+
+#if !VISTA
         // The store makes a constructor for each stored type as a small
         // compiled method. Mono compiles it at once and refuses one for an
         // abstract type (Windows only fails if it is ever called, and it never
@@ -88,13 +109,6 @@ namespace WmcStandins
             t.GetField("_retryDelay", fields).SetValue(session, TimeSpan.Zero);
         }
 
-        // Not in Mono: the last Win32 error as an HRESULT.
-        public static int Marshal_GetHRForLastWin32Error()
-        {
-            int e = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-            return e == 0 ? 0 : unchecked((int)(0x80070000u | (uint)(e & 0xFFFF)));
-        }
-
         // Large values ("blobs") travel in a row buffer as a pointer to a
         // stream the database hands out. Here the buffer holds a number that
         // names the bytes in this table instead. Entries are never removed:
@@ -130,5 +144,6 @@ namespace WmcStandins
         public static unsafe void Blob_Release(byte* pb)
         {
         }
+#endif
     }
 }

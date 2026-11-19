@@ -68,6 +68,11 @@ Microsoft.MediaCenter.Guide.EPG::get_MasterLineup => @stub
 # Every piece of queued work on the UI thread runs through this call. Guarded,
 # so that a failure in one page does not end Media Center (WmcStandins/Guard.cs).
 Microsoft.MediaCenter.Queues.QueueItem::Dispatch => @guard
+# (Vista's is in another namespace.)
+Microsoft.MediaCenter.UI.QueueItem::Dispatch => @guard
+# Shutting down, Media Center walks a list of task schedulers that other
+# threads may still be changing (seen on Vista: an empty slot, NullReference).
+ServiceBus.UIFramework.EhTaskScheduler::KillSchedulers => @guard
 
 # What Media Center tells a page while moving to or from it. Guarded one by
 # one so that a page that fails still leaves the page stack in order; the
@@ -132,6 +137,8 @@ Microsoft.MediaCenter.Interop.UIHelper::EhGetCDBurnDRMInfo => Drm_Info
 # Video files are played by the Mac (WmcStandins/Playback/MacPlayer.cs)
 # instead of the native player in mcplayerinterop.dll.
 Microsoft.MediaCenter.Playback.PlayerTable::FindPlayerType => Playback_FindPlayerType
+# Vista's makes a COM player for files instead (WmcStandins/Playback/VistaPlayer.cs).
+ehiPlay.WmpOcxPlayerClass::.ctor => Vista_NewFilePlayer
 
 # The playback code's diagnostic log goes to the "trace" log channel.
 Microsoft.MediaCenter.Playback.Log::TraceError => @body PlaybackLog

@@ -316,6 +316,8 @@ namespace WmcStandins.Wmp
         public override WMPLibraryType get_type() { return WMPLibraryType.wmpltLocal; }
         public override IWMPMediaCollection get_mediaCollection() { return _collection; }
         public override bool isIdentical(IWMPLibrary other) { return ReferenceEquals(other, this); }
-        public override string getItemInfo(string name) { return ""; }
+#if !VISTA
+        public override string getItemInfo(string name) { return ""; }     // IWMPLibrary2 (not in Vista)
+#endif
     }
 }

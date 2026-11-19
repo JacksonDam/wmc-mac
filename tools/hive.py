@@ -3,7 +3,7 @@ r"""Read a Windows registry hive file and write Media Center's part of it as a .
 
     hive.py <SOFTWARE hive> <out.reg> [<ehome folder>]
 
-A Windows 7 image carries its registry as hive files (Windows/System32/config).
+A Windows 7 or Vista image carries its registry as hive files (Windows/System32/config).
 Media Center's entries are in the SOFTWARE hive: its settings, and the COM
 classes, interfaces, type libraries and file types its components registered.
 This writes those, under HKEY_LOCAL_MACHINE\\SOFTWARE, as a .reg file for

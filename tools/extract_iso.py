@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Unpack Windows Media Center from a Windows 7 installation disc image (.iso).
+"""Unpack Windows Media Center from a Windows 7 or Vista installation disc
+image (.iso).
 
-    extract_iso.py <windows7.iso> <output folder>
+    extract_iso.py <windows.iso> <output folder>
 
-Any Windows 7 disc whose editions include Media Center will do (Home
-Premium, Professional, Ultimate, Enterprise; not Starter, Home Basic or the
-N editions). The disc keeps Windows in sources/install.wim, one image per
+Any disc whose editions include Media Center will do: Windows 7 Home
+Premium, Professional, Ultimate or Enterprise, or Windows Vista Home Premium
+or Ultimate (not Starter, Home Basic, Business or the N editions). The
+disc keeps Windows in sources/install.wim, one image per
 edition. This takes Media Center's folder (Windows/ehome) and the registry
 hive that holds its settings and COM registrations from the first edition
 that has it, and writes:
@@ -99,7 +101,8 @@ def images_with_media_center(wim):
 
 
 def edition_name(wim, index, scratch):
-    """The image's name from the WIM's XML description ("Windows 7 HOMEPREMIUM")."""
+    """The image's name from the WIM's XML description ("Windows 7 HOMEPREMIUM",
+    "Windows Vista ULTIMATE")."""
     fallback = "image %d" % index
     try:
         r = subprocess.run([find_7z(), "x", "-y", "-o" + scratch, wim, "[1].xml"], capture_output=True)
@@ -152,8 +155,8 @@ def main():
             if not re.search(r"sources/install\.wim$", listing, re.M):
                 if re.search(r"\.(esd|swm)$", listing, re.M):
                     fail("this disc keeps Windows in a compressed or split image (install.esd/.swm); "
-                         "a Windows 7 disc with sources/install.wim is needed")
-                fail("no sources/install.wim: this does not look like a Windows 7 installation disc")
+                         "a Windows 7 or Vista disc with sources/install.wim is needed")
+                fail("no sources/install.wim: this does not look like a Windows 7 or Vista installation disc")
             if point:
                 unmount(point)
                 point = None
@@ -168,7 +171,7 @@ def main():
         images = images_with_media_center(wim)
         if not images:
             fail("none of the editions on this disc includes Windows Media Center "
-                 "(Starter, Home Basic and the N editions do not)")
+                 "(Starter, Home Basic, Business and the N editions do not)")
         index = images[0]
         name = edition_name(wim, index, scratch)
         step("Unpacking Windows Media Center from %s" % name)

@@ -161,7 +161,12 @@ WMC_API int EhGetDRMStatusInfo(const WCHAR *file) {
 
 // ---- image handles: a picture file opened for its size (and for printing) -------
 
-typedef struct { uint32_t magic; int width, height; } WmcImageData;
+typedef struct {
+    uint32_t magic;
+    int width, height;
+    WCHAR *file;          // for EhCreateBitmapFromImageData
+    void *pixels;         // its result, kept until the handle is cleaned up
+} WmcImageData;
 #define WMC_IMAGE_MAGIC 0x44474d49u   // 'IMGD'
 
 WMC_API int32_t EhCreateImageDataHandle(const WCHAR *file, void **handle) {
@@ -180,9 +185,42 @@ WMC_API int32_t EhCreateImageDataHandle(const WCHAR *file, void **handle) {
         d->magic = WMC_IMAGE_MAGIC;
         d->width = w;
         d->height = h;
+        size_t n = 0;
+        while (file[n]) n++;
+        d->file = malloc((n + 1) * sizeof(WCHAR));
+        memcpy(d->file, file, (n + 1) * sizeof(WCHAR));
         *handle = d;
         return S_OK;
     }
+}
+
+// Vista's pictures (slide shows, the library) are decoded through an image
+// handle: 24-bit rows fitted into cx x cy, the bottom row first as in a
+// Windows bitmap (the callers say so with a negative stride). The rows
+// belong to the handle; no GDI bitmap is made (hbmp 0, which the caller
+// allows).
+WMC_API int32_t EhCreateBitmapFromImageData(void *handle, WINBOOL forceAspect, int *cx, int *cy, int *fullW, int *fullH,
+                                            void **data, void **hbmp) {
+    WmcImageData *d = handle;
+    if (data) *data = NULL;
+    if (hbmp) *hbmp = NULL;
+    if (!d || d->magic != WMC_IMAGE_MAGIC || !data) return E_FAIL;
+    free(d->pixels);
+    d->pixels = NULL;
+    int bytes = 0;
+    int32_t hr = thumbnail(d->file, cx, cy, fullW, fullH, &bytes, &d->pixels);
+    if (hr == S_OK && d->pixels) {
+        int stride = (*cx * 3 + 3) & ~3;
+        uint8_t *rows = d->pixels, *tmp = malloc((size_t)stride);
+        for (int top = 0, bottom = *cy - 1; top < bottom; top++, bottom--) {
+            memcpy(tmp, rows + (size_t)top * stride, (size_t)stride);
+            memcpy(rows + (size_t)top * stride, rows + (size_t)bottom * stride, (size_t)stride);
+            memcpy(rows + (size_t)bottom * stride, tmp, (size_t)stride);
+        }
+        free(tmp);
+    }
+    *data = d->pixels;
+    return hr;
 }
 
 WMC_API int32_t EhGetImageDataSize(void *handle, int *cx, int *cy) {
@@ -197,6 +235,8 @@ WMC_API int32_t EhCleanupImageDataHandle(void *handle) {
     WmcImageData *d = handle;
     if (!d || d->magic != WMC_IMAGE_MAGIC) return E_FAIL;
     d->magic = 0;
+    free(d->file);
+    free(d->pixels);
     free(d);
     return S_OK;
 }

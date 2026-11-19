@@ -17,9 +17,16 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using MediaCenter.Store.OleDB;
 
 namespace WmcStandins.Store
 {
+    // OLE DB error codes the store reacts to.
+    static class MemErrors
+    {
+        public const int NoTable = -2147217865;    // DB_E_NOTABLE: the store creates the table and tries again
+    }
+
     sealed class MemColumn
     {
         public readonly string Name;
@@ -77,6 +84,7 @@ namespace WmcStandins.Store
         {
             var row = new MemRow { Values = new byte[Columns.Count][], Serial = nextSerial++ };
             Rows.Add(row);
+            bySerial[row.Serial] = row;
             Version++;
             return row;
         }
@@ -86,7 +94,16 @@ namespace WmcStandins.Store
             if (row == null || row.Deleted) return;
             row.Deleted = true;
             Rows.Remove(row);
+            bySerial.Remove(row.Serial);
             Version++;
+        }
+
+        readonly Dictionary<long, MemRow> bySerial = new Dictionary<long, MemRow>();
+
+        public MemRow BySerial(long serial)
+        {
+            MemRow row;
+            return bySerial.TryGetValue(serial, out row) ? row : null;
         }
 
         public byte[] Get(MemRow row, int column)
@@ -129,6 +146,267 @@ namespace WmcStandins.Store
             });
             sorted[index] = new KeyValuePair<int, MemRow[]>(Version, rows);
             return rows;
+        }
+    }
+
+    // An accessor: where each column's value sits in a row buffer.
+    sealed class MemAccessor
+    {
+        public readonly DbBinding[] Bindings;   // in key order for a key accessor
+        public readonly int[] Columns;          // the table column of each binding, or Bookmark
+        // With `bookmarks` (Vista's store), the binding of column 0 named
+        // "Bookmark" is the row's bookmark, which the store reads to find the
+        // row again: served as Serial + 1, never stored.
+        public const int Bookmark = -2;
+
+        public MemAccessor(DbBinding[] bindings, MemTable table, bool bookmarks = false)
+        {
+            var list = new List<DbBinding>();
+            foreach (DbBinding b in bindings)
+                if (b != null) list.Add(b);
+            Bindings = list.ToArray();
+            Columns = new int[Bindings.Length];
+            for (int i = 0; i < Bindings.Length; i++)
+            {
+                DbBinding b = Bindings[i];
+                Columns[i] = bookmarks && b.iOrdinal == 0 && b.Name == "Bookmark" ? Bookmark : table.AddColumn(b.Name, b.wType);
+            }
+        }
+
+        static bool HasLength(DbBinding b)
+        {
+            return (b.dwPart & 2) != 0;
+        }
+
+
+        // The value of binding b in a buffer, as the bytes the table keeps.
+        public static byte[] Take(DbBinding b, byte[] buffer)
+        {
+            int at = (int)b.obValue, max = (int)b.cbMaxLen;
+            if (at >= buffer.Length) return null;
+            if (at + max > buffer.Length) max = buffer.Length - at;
+            int length;
+            if (HasLength(b) && b.obLength + 4 <= buffer.Length)
+            {
+                // The length (DBLENGTH) is 4 bytes in Media Center's store.
+                length = (int)BitConverter.ToUInt32(buffer, (int)b.obLength);
+                if (length > max) length = max;
+            }
+            else if (MemValue.IsText(b.wType))
+            {
+                // a key holds a string up to its terminating zero character
+                length = 0;
+                while (length + 1 < max && (buffer[at + length] | buffer[at + length + 1]) != 0) length += 2;
+            }
+            else
+            {
+                length = max;
+            }
+            var value = new byte[length];
+            Buffer.BlockCopy(buffer, at, value, 0, length);
+            return value;
+        }
+
+        // Puts a value into a buffer where binding b says.
+        public static void Put(DbBinding b, byte[] buffer, byte[] value)
+        {
+            int at = (int)b.obValue, max = (int)b.cbMaxLen;
+            if (at >= buffer.Length) return;
+            if (at + max > buffer.Length) max = buffer.Length - at;
+            Array.Clear(buffer, at, max);
+            int n = value == null ? 0 : Math.Min(value.Length, max);
+            if (n > 0) Buffer.BlockCopy(value, 0, buffer, at, n);
+            if (HasLength(b) && b.obLength + 4 <= buffer.Length)
+                Buffer.BlockCopy(BitConverter.GetBytes((uint)n), 0, buffer, (int)b.obLength, 4);
+        }
+    }
+
+    // A row cursor over one table, which both stores' rowsets walk with: in
+    // an index's order or filtered by a query's condition, limited to a key
+    // range, put in place by Seek and stepped by Next. Callers hold the
+    // database's lock.
+    sealed class MemCursor
+    {
+        readonly MemDatabase db;
+        public readonly string TableName, IndexName;
+        public readonly MemCondition Condition;
+        MemAccessor key;
+
+        // The range the cursor is limited to (SetRange), as key values.
+        byte[][] rangeMin, rangeMax;
+        uint rangeType;
+
+        MemRow[] view;      // the rows the cursor walks, worked out at the start of each walk
+        int position = -1;
+
+        public MemCursor(MemDatabase db, string tableName, string indexName, MemCondition condition)
+        {
+            this.db = db;
+            TableName = tableName;
+            IndexName = indexName;
+            Condition = condition;
+        }
+
+        public MemTable Table { get { return db.Table(TableName); } }
+        public MemAccessor Key { get { return key; } }
+
+        public MemRow Current
+        {
+            get { return view != null && position >= 0 && position < view.Length && !view[position].Deleted ? view[position] : null; }
+        }
+
+        // The accessor keys are given in. An index the table does not have
+        // yet is the key's columns in order.
+        public void SetKey(MemAccessor accessor)
+        {
+            key = accessor;
+            MemTable t = Table;
+            if (t != null && IndexName != null && !t.Indexes.ContainsKey(IndexName))
+            {
+                var names = new string[key.Bindings.Length];
+                for (int i = 0; i < names.Length; i++) names[i] = key.Bindings[i].Name;
+                t.Indexes[IndexName] = names;
+            }
+        }
+
+        byte[][] KeyValues(byte[] buffer, uint count)
+        {
+            if (key == null) return new byte[0][];
+            int n = (int)Math.Min(count, (uint)key.Bindings.Length);
+            var values = new byte[n][];
+            for (int i = 0; i < n; i++) values[i] = MemAccessor.Take(key.Bindings[i], buffer);
+            return values;
+        }
+
+        // How a row compares with a key on the key's columns. With `prefix`,
+        // a text column only has to begin with the key's text.
+        int CompareKey(MemTable t, MemRow row, byte[][] values, bool prefix)
+        {
+            for (int i = 0; i < values.Length; i++)
+            {
+                int column = key.Columns[i];
+                if (column < 0) continue;
+                short type = t.Columns[column].Type;
+                byte[] v = t.Get(row, column);
+                if (prefix && i == values.Length - 1 && MemValue.IsText(type) && v != null && values[i] != null && v.Length > values[i].Length)
+                {
+                    var head = new byte[values[i].Length];
+                    Buffer.BlockCopy(v, 0, head, 0, head.Length);
+                    v = head;
+                }
+                int c = MemValue.Compare(type, v, values[i]);
+                if (c != 0) return c;
+            }
+            return 0;
+        }
+
+        bool InRange(MemTable t, MemRow row)
+        {
+            if (rangeMin == null || key == null) return true;
+            bool prefix = (rangeType & 8) != 0;
+            int c = CompareKey(t, row, rangeMin, prefix);
+            if ((rangeType & 16) != 0) return c == 0;                  // Match: equal to the first key
+            if (c < 0 || (c == 0 && (rangeType & 1) != 0)) return false;  // before the start
+            if (rangeMax != null)
+            {
+                int d = CompareKey(t, row, rangeMax, prefix);
+                if (d > 0 || (d == 0 && (rangeType & 2) != 0)) return false;
+            }
+            return true;
+        }
+
+        public void SetRange(uint columnCountMin, byte[] keyMin, uint columnCountMax, byte[] keyMax, uint range)
+        {
+            rangeMin = KeyValues(keyMin, columnCountMin);
+            rangeMax = keyMax != null ? KeyValues(keyMax, columnCountMax) : null;
+            rangeType = range;
+            Restart();
+        }
+
+        public void ClearRange()
+        {
+            rangeMin = rangeMax = null;
+            Restart();
+        }
+
+        MemRow[] BuildView()
+        {
+            MemTable t = Table;
+            if (t == null) return new MemRow[0];
+            var rows = new List<MemRow>();
+            foreach (MemRow row in t.Ordered(IndexName))
+            {
+                if (!InRange(t, row)) continue;
+                if (Condition != null && !Condition.Test(t, row)) continue;
+                rows.Add(row);
+            }
+            return rows.ToArray();
+        }
+
+        public void Restart()
+        {
+            view = null;
+            position = -1;
+        }
+
+        public bool Next()
+        {
+            if (view == null)
+            {
+                view = BuildView();
+                position = -1;
+            }
+            do position++;
+            while (position < view.Length && view[position].Deleted);
+            return position < view.Length;
+        }
+
+        public bool Seek(uint columnCount, byte[] keyBuffer, uint seekType)
+        {
+            MemTable t = Table;
+            view = BuildView();
+            position = view.Length;
+            if (t == null || key == null) return false;
+            byte[][] values = KeyValues(keyBuffer, columnCount);
+            int found = -1;
+            switch (seekType)
+            {
+                case 1:   // the first row equal to the key
+                    for (int i = 0; i < view.Length && found < 0; i++) if (CompareKey(t, view[i], values, false) == 0) found = i;
+                    break;
+                case 2:   // the last row equal to the key
+                    for (int i = view.Length - 1; i >= 0 && found < 0; i--) if (CompareKey(t, view[i], values, false) == 0) found = i;
+                    break;
+                case 4:   // the first row at or after the key
+                    for (int i = 0; i < view.Length && found < 0; i++) if (CompareKey(t, view[i], values, false) >= 0) found = i;
+                    break;
+                case 8:   // the first row after the key
+                    for (int i = 0; i < view.Length && found < 0; i++) if (CompareKey(t, view[i], values, false) > 0) found = i;
+                    break;
+                case 16:  // the last row at or before the key
+                    for (int i = view.Length - 1; i >= 0 && found < 0; i--) if (CompareKey(t, view[i], values, false) <= 0) found = i;
+                    break;
+                case 32:  // the last row before the key
+                    for (int i = view.Length - 1; i >= 0 && found < 0; i--) if (CompareKey(t, view[i], values, false) < 0) found = i;
+                    break;
+            }
+            if (found < 0) return false;
+            position = found - 1;     // the next Next lands on it
+            return true;
+        }
+
+        // Just before a given row (Vista's PositionOnBookmark), in the walk if
+        // it is in it, else on its own.
+        public void PositionOn(MemRow row)
+        {
+            view = BuildView();
+            int at = row == null ? -1 : Array.IndexOf(view, row);
+            if (at < 0)
+            {
+                view = row == null ? new MemRow[0] : new[] { row };
+                at = 0;
+            }
+            position = at - 1;
         }
     }
 

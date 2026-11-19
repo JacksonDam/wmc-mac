@@ -60,10 +60,13 @@ static class Bases
                 all.Add(t);
                 foreach (var i in t.Interfaces) add(i.InterfaceType.Resolve());
             };
-            foreach (string iname in parts[1].Split('+'))
+            // A|B: the first of these that the interop assembly has (an older
+            // Media Center may only have the interface a newer one extends).
+            foreach (string choice in parts[1].Split('+'))
             {
-                var t = interop.MainModule.Types.FirstOrDefault(x => x.Name == iname);
-                if (t == null) { Console.Error.WriteLine("bases: no interface " + iname); return 1; }
+                var t = choice.Split('|').Select(iname => interop.MainModule.Types.FirstOrDefault(x => x.Name == iname))
+                              .FirstOrDefault(x => x != null);
+                if (t == null) { Console.Error.WriteLine("bases: no interface " + choice); return 1; }
                 add(t);
             }
             var done = new HashSet<string>();

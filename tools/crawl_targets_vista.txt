@@ -1,0 +1,40 @@
+# Vista's Media Center: name : keys from the start menu. A fresh install
+# starts on TV + Movies > recorded tv.
+# Strips, top to bottom: Pictures + Videos, Music, TV + Movies, Online Media, Tasks.
+# `|` marks where the "before" frame is taken (default: before the last key).
+
+tv.recorded          : enter
+tv.dvd               : right enter
+tv.setup             : right right enter
+music.library        : up enter
+music.playall        : up right enter
+music.radio          : up right right enter
+music.search         : up right right right enter
+pictures.library     : up up enter
+pictures.playall     : up up right enter
+pictures.videos      : up up right right enter
+online.library       : down enter
+online.second        : down right enter
+tasks.first          : down down enter
+tasks.second         : down down right enter
+tasks.third          : down down right right enter
+tasks.fourth         : down down right right right enter
+tasks.fifth          : down down right right right right enter
+
+# Inside the libraries (the first visit asks about library folders: No).
+videos.play          : up up right right enter wait3 right enter wait2 enter
+videos.play.wmv      : up up right right enter wait3 right enter wait2 right right enter
+pictures.open        : up up enter wait3 right enter wait2 enter
+music.album          : up enter wait3 right enter wait2 enter
+pictures.slideshow   : up up enter wait3 right enter wait2 up up enter
+
+# Settings (left of shutdown on Tasks) and its pages, top to bottom.
+tasks.settings       : down down left enter
+settings.1           : down down left enter enter
+settings.2           : down down left enter down enter
+settings.3           : down down left enter down down enter
+settings.4           : down down left enter down down down enter
+settings.5           : down down left enter down down down down enter
+settings.6           : down down left enter down down down down down enter
+settings.7           : down down left enter down down down down down down enter
+settings.8           : down down left enter down down down down down down down enter

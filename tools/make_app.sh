@@ -1,7 +1,7 @@
 #!/bin/sh
-# Make a Mac app of Windows Media Center from your own Windows 7 disc image.
+# Make a Mac app of Windows Media Center from your own Windows 7 or Vista disc image.
 #
-#   tools/make_app.sh <windows7.iso> [--output FOLDER] [--work FOLDER] [--no-check]
+#   tools/make_app.sh <windows.iso> [--output FOLDER] [--work FOLDER] [--no-check]
 #
 # Apple's Command Line Tools bring the compiler and Python this needs; if they
 # are missing, macOS is asked to install them (a dialog appears) and this

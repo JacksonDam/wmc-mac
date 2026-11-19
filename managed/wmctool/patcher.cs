@@ -178,8 +178,23 @@ static class Patcher
                         if (FixPathArguments(m, il, ins, callee, pathCount)) n++;
                         continue;
                     }
-                    if (ins.OpCode == OpCodes.Newobj) continue;
                     string target;
+                    if (ins.OpCode == OpCodes.Newobj)
+                    {
+                        // Type::.ctor => Name: `new Type(args)` becomes a call
+                        // to the static Name(args), which returns the object
+                        // to use instead (as object: a stand-in for a COM
+                        // class cannot be that class).
+                        if (callee.Name == ".ctor" && s_redirects.TryGetValue(key, out target))
+                        {
+                            var factory = new MethodReference(target, module.TypeSystem.Object, CompatType(module));
+                            foreach (var p in callee.Parameters) factory.Parameters.Add(new ParameterDefinition(p.ParameterType));
+                            ins.OpCode = OpCodes.Call;
+                            ins.Operand = factory;
+                            n++;
+                        }
+                        continue;
+                    }
                     if (s_redirects.TryGetValue(key, out target))
                     {
                         if (!Plain(callee))

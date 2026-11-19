@@ -156,6 +156,18 @@ bool wmc_threadq_ui_busy(void) {
     return busy;
 }
 
+#define WM_TIMER 0x0113
+
+// Called with the lock held: the first due timer that the filter accepts.
+static WmcTimer *due_timer(WmcThreadQueue *q, HWND hwnd, UINT min, UINT max, uint32_t now) {
+    if ((min || max) && (WM_TIMER < min || WM_TIMER > max)) return NULL;
+    for (WmcTimer *t = q->timers; t; t = t->next) {
+        if (hwnd && t->hwnd != hwnd) continue;
+        if ((int32_t)(now - t->due) >= 0) return t;
+    }
+    return NULL;
+}
+
 bool wmc_threadq_take_msg(WmcThreadQueue *q, MSG *out, HWND hwnd, UINT min, UINT max, bool remove) {
     bool found = false;
     pthread_mutex_lock(&q->lock);
@@ -172,27 +184,89 @@ bool wmc_threadq_take_msg(WmcThreadQueue *q, MSG *out, HWND hwnd, UINT min, UINT
         }
         break;
     }
+    if (!found) {
+        // Timer messages come only when nothing else is waiting, and never
+        // pile up: one taken, the timer starts its next period.
+        uint32_t now = wmc_tick_count();
+        WmcTimer *t = due_timer(q, hwnd, min, max, now);
+        if (t) {
+            *out = (MSG){ .hwnd = t->hwnd, .message = WM_TIMER, .wParam = t->id, .lParam = (LPARAM)t->proc, .time = now };
+            found = true;
+            if (remove) t->due = now + t->period;
+        }
+    }
     pthread_mutex_unlock(&q->lock);
     return found;
 }
 
+uintptr_t wmc_threadq_set_timer(WmcThreadQueue *q, HWND hwnd, uintptr_t id, uint32_t ms, void *proc) {
+    if (ms < 10) ms = 10;          // USER_TIMER_MINIMUM
+    pthread_mutex_lock(&q->lock);
+    WmcTimer *t = q->timers;
+    while (t && !(t->hwnd == hwnd && t->id == id)) t = t->next;
+    if (!t) {
+        t = calloc(1, sizeof(*t));
+        t->hwnd = hwnd;
+        t->id = hwnd ? id : ++q->last_timer_id;
+        t->next = q->timers;
+        q->timers = t;
+    }
+    t->period = ms;
+    t->due = wmc_tick_count() + ms;
+    t->proc = proc;
+    uintptr_t result = hwnd ? 1 : t->id;
+    pthread_cond_broadcast(&q->cond);    // a waiting thread works out its time-out again
+    pthread_mutex_unlock(&q->lock);
+    return result;
+}
+
+bool wmc_threadq_kill_timer(WmcThreadQueue *q, HWND hwnd, uintptr_t id) {
+    bool found = false;
+    pthread_mutex_lock(&q->lock);
+    for (WmcTimer **p = &q->timers; *p; p = &(*p)->next) {
+        if ((*p)->hwnd == hwnd && (*p)->id == id) {
+            WmcTimer *t = *p;
+            *p = t->next;
+            free(t);
+            found = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&q->lock);
+    return found;
+}
+
+static struct timespec abs_time_in(uint32_t ms) {
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    uint64_t ns = (uint64_t)now.tv_usec * 1000 + (uint64_t)(ms % 1000) * 1000000ull;
+    return (struct timespec){ now.tv_sec + ms / 1000 + (time_t)(ns / 1000000000ull), (long)(ns % 1000000000ull) };
+}
+
 bool wmc_threadq_wait(WmcThreadQueue *q, uint32_t timeout_ms) {
     bool ready = true;
-    struct timespec until;
-    if (timeout_ms != 0xFFFFFFFFu) {
-        struct timeval now;
-        gettimeofday(&now, NULL);
-        uint64_t ns = (uint64_t)now.tv_usec * 1000 + (uint64_t)(timeout_ms % 1000) * 1000000ull;
-        until.tv_sec = now.tv_sec + timeout_ms / 1000 + (time_t)(ns / 1000000000ull);
-        until.tv_nsec = (long)(ns % 1000000000ull);
-    }
+    uint32_t start = wmc_tick_count();
     pthread_mutex_lock(&q->lock);
     while (!q->wake && !q->work_head && !q->msg_head) {
-        if (timeout_ms == 0xFFFFFFFFu) {
+        // A due timer is a message too; otherwise sleep no longer than
+        // until the next one is due.
+        uint32_t now = wmc_tick_count();
+        if (due_timer(q, NULL, 0, 0, now)) break;
+        uint32_t wait = 0xFFFFFFFFu;
+        if (timeout_ms != 0xFFFFFFFFu) {
+            uint32_t spent = now - start;
+            if (spent >= timeout_ms) { ready = false; break; }
+            wait = timeout_ms - spent;
+        }
+        for (WmcTimer *t = q->timers; t; t = t->next) {
+            uint32_t until = t->due - now;     // > 0: not due (checked above)
+            if (until < wait) wait = until;
+        }
+        if (wait == 0xFFFFFFFFu) {
             pthread_cond_wait(&q->cond, &q->lock);
-        } else if (pthread_cond_timedwait(&q->cond, &q->lock, &until) == ETIMEDOUT) {
-            ready = false;
-            break;
+        } else {
+            struct timespec until = abs_time_in(wait);
+            pthread_cond_timedwait(&q->cond, &q->lock, &until);
         }
     }
     q->wake = false;

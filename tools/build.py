@@ -18,6 +18,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import peinfo  # noqa: E402
 # WMC_TOOLCHAIN: another toolchain folder (see tools/setup_toolchain.py).
 TOOLCHAIN = os.environ.get("WMC_TOOLCHAIN") or os.path.join(ROOT, "toolchain")
 MONO_DIR = os.path.join(TOOLCHAIN, "mono")
@@ -52,7 +54,7 @@ COM_BASES = [
         "MediaCollectionBase=IWMPMediaCollection2",
         "StringCollectionBase=IWMPStringCollection2",
         "QueryBase=IWMPQuery",
-        "LibraryBase=IWMPLibrary2",
+        "LibraryBase=IWMPLibrary2|IWMPLibrary",       # Vista: IWMPLibrary only
         "ControlsBase=IWMPControls3",
         "SettingsBase=IWMPSettings2",
         "NetworkBase=IWMPNetwork",
@@ -63,7 +65,26 @@ COM_BASES = [
         "ErrorBase=IWMPError",
         "PlayerApplicationBase=IWMPPlayerApplication",
     ]),
+    # Vista's video player (managed/WmcStandins/Playback/VistaPlayer.cs);
+    # Windows 7 has no ehiPlay.dll.
+    ("WmcPlayBases.dll", "ehiPlay.dll", [
+        "FilePlayerBase=IPlayer+IFilePlayer+IWmpOcxPlayer",
+    ]),
 ]
+
+
+def release():
+    """Which Media Center the tree holds: "vista" (6.0) or "7" (6.1), from
+    ehshell.dll's version."""
+    names = os.listdir(EHOME) if os.path.isdir(EHOME) else []
+    shell = next((n for n in names if n.lower() == "ehshell.dll"), None)
+    return "vista" if shell and peinfo.version(os.path.join(EHOME, shell)).startswith("6.0.") else "7"
+
+
+def csc_defines():
+    """Our C# is compiled with VISTA defined for Vista's Media Center, whose
+    assemblies lack some of the types Windows 7's stand-ins are built on."""
+    return ["-define:VISTA"] if release() == "vista" else []
 
 
 def run(cmd, **kw):
@@ -170,7 +191,7 @@ def step_standins():
     refs = [os.path.join(REFS, n) for n in sorted(os.listdir(REFS)) if n.lower().endswith(".dll")]
     if newer(out, src + refs):
         run([MONO, CSC, "-nologo", "-debug", "-unsafe", "-target:library", "-nowarn:1701,1702,0436,0618",
-             "-out:" + out] + ["-r:" + r for r in refs] + ["-r:System.Drawing.dll", "-r:System.Xml.dll", "-r:System.Core.dll"] + src)
+             "-out:" + out] + csc_defines() + ["-r:" + r for r in refs] + ["-r:System.Drawing.dll", "-r:System.Xml.dll", "-r:System.Core.dll"] + src)
         print("built WmcStandins.dll")
 
 
@@ -210,6 +231,8 @@ def step_refs():
     for out, interop, specs in COM_BASES:
         dst = os.path.join(REFS, out)
         src = os.path.join(REFS, interop)
+        if not os.path.exists(src):
+            continue            # not in this version of Media Center
         if newer(dst, [src, WMCTOOL]):
             run([MONO, WMCTOOL, "bases", src, dst] + specs)
         shutil.copy(dst, os.path.join(APP, out))
@@ -226,7 +249,7 @@ def step_host():
             continue
         out = os.path.join(APP, name + ".exe")
         run([MONO, CSC, "-nologo", "-debug", "-unsafe", "-nowarn:1701,1702,0436,0618",
-             "-out:" + out] + refs + src)
+             "-out:" + out] + csc_defines() + refs + src)
         config = os.path.join(ROOT, "managed", name, "app.config")
         if os.path.exists(config):
             shutil.copy(config, out + ".config")

@@ -1027,7 +1027,9 @@ static NSArray<NSArray<NSString *> *> *script_commands(NSString *script) {
             break;
         }
         case SpMsg_FormWindow_CreateRootContainer:
+#ifdef SP_HAS_MSG_FormWindow_SetIcon
         case SpMsg_FormWindow_SetIcon:
+#endif
         case SpMsg_FormWindow_SetMaxResizeWidth:
         case SpMsg_FormWindow_SetMinResizeWidth:
         case SpMsg_FormWindow_EnableShellShutdownHook:

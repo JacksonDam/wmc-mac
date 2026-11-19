@@ -22,9 +22,27 @@ WMC_API BOOL TranslateMessage(const MSG *msg) {
     return FALSE;   // key messages arrive already translated from the Mac side
 }
 
+typedef void (*TIMERPROC)(HWND hwnd, UINT msg, uintptr_t id, DWORD time);
+
 WMC_API LRESULT DispatchMessageW(const MSG *msg) {
+    // A timer with a callback is called here, window or not (Vista's UI
+    // framework runs its time-outs on one).
+    if (msg->message == 0x0113 /* WM_TIMER */ && msg->lParam) {
+        ((TIMERPROC)msg->lParam)(msg->hwnd, msg->message, msg->wParam, wmc_tick_count());
+        return 0;
+    }
     if (!msg->hwnd) return 0;
     return wmc_window_call_proc(msg->hwnd, msg->message, msg->wParam, msg->lParam);
+}
+
+// Timers belong to the calling thread, as on Windows: its message loop
+// delivers them.
+WMC_API uintptr_t SetTimer(HWND hwnd, uintptr_t id, UINT ms, void *proc) {
+    return wmc_threadq_set_timer(wmc_threadq_current(), hwnd, id, ms, proc);
+}
+
+WMC_API BOOL KillTimer(HWND hwnd, uintptr_t id) {
+    return wmc_threadq_kill_timer(wmc_threadq_current(), hwnd, id);
 }
 
 WMC_API BOOL PostMessageW(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {

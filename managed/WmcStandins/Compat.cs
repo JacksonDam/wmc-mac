@@ -173,6 +173,7 @@ namespace WmcStandins
         // go to the Mac's player; everything else (discs, TV recordings,
         // network streams) to Media Center's own choice, which then reports
         // that it cannot start.
+#if !VISTA
         public static string Playback_FindPlayerType(Uri uri, bool remote, out string assemblyName)
         {
             if (uri != null && uri.IsFile)
@@ -187,6 +188,7 @@ namespace WmcStandins
             }
             return Microsoft.MediaCenter.Playback.PlayerTable.FindPlayerType(uri, remote, out assemblyName);
         }
+#endif
 
         // Is a file protected (Windows Media DRM), and what does its licence
         // allow? Nothing that can be opened here is protected.
