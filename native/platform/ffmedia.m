@@ -153,6 +153,9 @@ typedef struct {
     // stopping the node (under the lock) calls them for what was pending.
     atomic_int _buffersPlayed;
     atomic_int _generation;               // counts restarts (a stopped node reports its buffers as done)
+    // When the sound ran out at the end of the file (CACurrentMediaTime), or
+    // 0: the clock goes on from there by itself, for pictures past the sound.
+    double _soundDoneAt;
     // the clock
     bool _playing;
     float _rate, _volume;
@@ -266,6 +269,12 @@ static void *reader_main(void *arg);
         double played = t && t.isSampleTimeValid ? (double)t.sampleTime : 0;
         if (played > (double)_scheduled) played = (double)_scheduled;
         p = _audioBase + played / _format.sampleRate;
+        // A file's pictures can outlast its sound (Vista's Bear.wmv by 0.15 s):
+        // once all of it has played, the clock carries on by the host clock.
+        if (_eof && atomic_load(&_buffersPlayed) >= _buffers) {
+            if (_soundDoneAt <= 0) _soundDoneAt = CACurrentMediaTime();
+            p += (CACurrentMediaTime() - _soundDoneAt) * _rate;
+        }
     } else {
         p = _wallBase + (CACurrentMediaTime() - _wallStart) * _rate;
     }
@@ -274,9 +283,14 @@ static void *reader_main(void *arg);
 }
 
 - (bool)endedLocked {
-    if (!_eof || _queued > 0) return false;
-    if ([self audioClock]) return atomic_load(&_buffersPlayed) >= _buffers;
-    return [self positionLocked] >= _lastPts - 0.001 || _duration <= 0 || [self positionLocked] >= _duration;
+    if (!_eof) return false;
+    if ([self audioClock] && atomic_load(&_buffersPlayed) < _buffers) return false;
+    double pos = [self positionLocked];
+    bool pastLength = _duration > 0 && pos >= _duration - 0.001;
+    // (The clock stops at the file's length: a picture stamped at or past it
+    // is never due, and the file has ended all the same.)
+    if (_queued > 0) return pastLength;
+    return [self audioClock] || pastLength || _duration <= 0 || pos >= _lastPts - 0.001;
 }
 
 // Starts again from `t`: everything queued or scheduled goes.
@@ -298,6 +312,7 @@ static void *reader_main(void *arg);
     _scheduled = 0;
     _buffers = 0;
     atomic_store(&_buffersPlayed, 0);
+    _soundDoneAt = 0;
     _seekTo = t;
     _dropBefore = t;
     _eof = false;

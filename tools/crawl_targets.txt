@@ -133,3 +133,5 @@ movies.add.next                : up enter wait3 left enter wait2 enter
 music.wma.play       : up up enter wait3 enter wait2 right right right right enter wait2 enter
 videos.wmv.play      : up up up right right enter wait3 enter wait2 down down enter wait3
 videos.avi.play      : up up up right right enter wait3 enter wait2 down down down enter wait3
+# Played to its end (12 s), then Back: the end must be noticed, and Back come at once.
+videos.wmv.end       : up up up right right enter wait3 enter wait2 down down enter wait15
