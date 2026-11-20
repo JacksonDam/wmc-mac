@@ -1,0 +1,33 @@
+# XP Media Center Edition 2005: name : keys from the start menu. Its start
+# menu is one wheel of items and starts on My Pictures; up goes towards My
+# Videos, Online Spotlight and Play DVD, down towards My Music, More Programs
+# and Settings.
+# `|` marks where the "before" frame is taken (default: before the last key).
+
+pictures.library     : enter
+videos.library       : up enter
+spotlight            : up up enter
+dvd                  : up up up enter
+music.library        : down enter
+programs             : down down enter
+settings             : down down down enter
+
+# Inside the libraries (the first visit asks whether to add folders: No).
+pictures.open        : enter wait3 right enter wait2 right enter
+videos.play          : up enter wait3 right enter wait2 right enter
+music.album          : down enter wait3 right enter wait2 right enter
+music.play           : down enter wait3 right enter wait2 right enter wait2 enter
+pictures.slideshow   : enter wait3 right enter wait2 enter
+# Answering Yes to the first visit's question: XP's own folder set-up.
+pictures.add         : enter wait3 enter
+music.add            : down enter wait3 enter
+
+# Settings and its pages, top to bottom.
+settings.general     : down down down enter wait2 enter
+settings.tv          : down down down enter wait2 down enter
+settings.pictures    : down down down enter wait2 down down enter
+settings.music       : down down down enter wait2 down down down enter
+settings.dvd         : down down down enter wait2 down down down down enter
+settings.messenger   : down down down enter wait2 down down down down down enter
+settings.radio       : down down down enter wait2 down down down down down down enter
+settings.help        : down down down enter wait2 down down down down down down down enter

@@ -3,7 +3,7 @@
 // layouts); nothing from those assemblies is copied into this repository.
 //
 //   wmctool pinvokes  <ehome dir> <out.tsv>      every native call the code makes
-//   wmctool protocol  <Microsoft.MediaCenter.UI.dll> <out.h>   render protocol layouts
+//   wmctool protocol  <Microsoft.MediaCenter.UI.dll | EhCM.dll> <out.h>   render protocol layouts
 //   wmctool publicize <in.dll> <out.dll>         reference copy with everything public
 //   wmctool patch     <ehome dir> <out dir>      runtime copies with Windows semantics
 using System;
@@ -214,7 +214,7 @@ static class WmcTool
             int a = Math.Min(ft.Align, pack);
             if (td.IsExplicitLayout) offset = f.Offset;
             else offset = (offset + a - 1) / a * a;
-            layout.Fields.Add(new Field { Name = CField(f.Name), Type = ft, Offset = offset, Comment = f.FieldType.Name });
+            layout.Fields.Add(new Field { Name = CField(SameName(td, f.Name)), Type = ft, Offset = offset, Comment = f.FieldType.Name });
             offset += ft.Size;
             align = Math.Max(align, a);
         }
@@ -235,8 +235,29 @@ static class WmcTool
         // move whenever a message is added or taken away.
         string name;
         if (!s_msgNames.TryGetValue(td.FullName, out name)) name = td.Name;
-        for (var d = td.DeclaringType; d != null; d = d.DeclaringType) name = d.Name + "_" + name;
+        for (var d = td.DeclaringType; d != null; d = d.DeclaringType)
+        {
+            // (XP's eHome.Native.Win32 is Windows 7's Win32Api: one name for the engine)
+            string outer = d.Name == "Win32" && d.Namespace == "eHome.Native" ? "Win32Api" : d.Name;
+            name = outer + "_" + name;
+        }
         return "Sp_" + Regex.Replace(name, "[^A-Za-z0-9_]", "_");
+    }
+
+    // XP Media Center Edition 2005 (eHome.* in EhCM.dll) names the fields the
+    // engine reads differently: messages start "__size, __msgid,
+    // __idObjectSubject" and geometry has no "m_". They get Windows 7's names,
+    // so one engine reads both.
+    static readonly HashSet<string> s_geometry = new HashSet<string>
+        { "Size", "Point", "Rectangle", "Vector3", "Rotation" };   // (the float ones match already)
+
+    static string SameName(TypeDefinition td, string name)
+    {
+        string ns = td.DeclaringType != null ? td.DeclaringType.Namespace : td.Namespace;
+        if (ns == null || !ns.StartsWith("eHome.")) return name;
+        if (name.StartsWith("__")) return name.Substring(2);
+        if (s_geometry.Contains(td.Name) && !name.StartsWith("m_")) return "m_" + name.TrimStart('_');
+        return name;
     }
 
     static string CField(string name)
@@ -286,7 +307,11 @@ static class WmcTool
 
         foreach (var type in AllTypes(asm.MainModule).OrderBy(t => t.FullName, StringComparer.Ordinal))
         {
-            if (type.Namespace == null || !type.Namespace.StartsWith("Microsoft.MediaCenter.Protocols")) continue;
+            // (XP Media Center Edition 2005: eHome.UI.Remote.Protocols in EhCM.dll)
+            string space = type.Namespace == null ? null
+                         : type.Namespace.StartsWith("Microsoft.MediaCenter.Protocols") ? "Microsoft.MediaCenter.Protocols."
+                         : type.Namespace.StartsWith("eHome.UI.Remote.Protocols") ? "eHome.UI.Remote.Protocols." : null;
+            if (space == null) continue;
 
             // Remote class names appear as string constants in the protocol
             // binders: port.InitRemoteClass("Splash::Rendering::Visual").
@@ -306,7 +331,7 @@ static class WmcTool
             cls = cls.StartsWith("Remote") ? cls.Substring(6) : cls.StartsWith("Local") ? cls.Substring(5) : cls;
             enums.AppendFormat("/* {0}{1} */\nenum {{\n", type.FullName, callback ? " (renderer to application)" : "");
             var counts = new Dictionary<string, int>();
-            string protoName = type.Namespace.Substring("Microsoft.MediaCenter.Protocols.".Length).Replace(".", "::") + "::" + cls;
+            string protoName = type.Namespace.Substring(space.Length).Replace(".", "::") + "::" + cls;
             string table = "n_" + Regex.Replace(protoName, "[^A-Za-z0-9]", "_");
             int maxId = msgs.Max(x => int.Parse(x.Match.Groups[1].Value));
             names.AppendFormat("static const char *const {0}[{1}] = {{\n", table, maxId + 1);
@@ -334,16 +359,18 @@ static class WmcTool
         // messages): the text run packet, image and device descriptions.
         foreach (var type in AllTypes(asm.MainModule).OrderBy(t => t.FullName, StringComparer.Ordinal))
         {
-            bool interop = type.DeclaringType != null && type.DeclaringType.FullName == "Microsoft.MediaCenter.Interop.RenderApi"
+            bool interop = type.DeclaringType != null && (type.DeclaringType.FullName == "Microsoft.MediaCenter.Interop.RenderApi"
+                                                          || type.DeclaringType.FullName == "eHome.Native.RenderApi")
                            && type.IsValueType && !type.IsEnum;
             bool named = type.FullName == "Microsoft.MediaCenter.Interop.Win32Api/LOGFONTW_STRUCT"
-                         || type.FullName == "Microsoft.MediaCenter.Interop.Win32Api/RECT";
+                         || type.FullName == "Microsoft.MediaCenter.Interop.Win32Api/RECT"
+                         || type.FullName == "eHome.Native.Win32/LOGFONTW_STRUCT" || type.FullName == "eHome.Native.Win32/RECT";
             if (!interop && !named) continue;
             try { LayoutOf(type); }
             catch (InvalidOperationException e) { Console.Error.WriteLine("skip " + type.FullName + ": " + e.Message); }
         }
         s_allowClasses = true;
-        var req = asm.MainModule.GetType("Microsoft.MediaCenter.UI.ImageRequirements");
+        var req = asm.MainModule.GetType("Microsoft.MediaCenter.UI.ImageRequirements") ?? asm.MainModule.GetType("eHome.Native.ImageRequirements");
         if (req != null)
         {
             try { LayoutOf(req); }

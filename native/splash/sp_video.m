@@ -9,6 +9,11 @@
 // WmcStandins/Playback), or for Windows Media and AVI files (which
 // AVFoundation cannot open) FFmpeg's (native/platform/ffmedia.m); on every tick each
 // playing one hands its newest frame to its pool.
+//
+// XP Media Center Edition 2005 has no video pools: its dynamic image is a
+// pair of ordinary surfaces, each the whole of a pool of its own, which it
+// draws itself (one before the scene, for full-screen video, one in it).
+// SpDynamicSurfaceCreate pairs them for a player and names the pair.
 #import <AVFoundation/AVFoundation.h>
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
@@ -16,8 +21,11 @@
 #include "platform/ffmedia.h"
 #include "splash_protocol.h"
 
-static NSMutableDictionary<NSNumber *, SpVideoPool *> *s_pools;      // by unique id
 static NSMutableArray *s_videos;                                       // WmcVideo, open ones
+
+#ifndef WMC_XP
+
+static NSMutableDictionary<NSNumber *, SpVideoPool *> *s_pools;      // by unique id
 
 // ------------------------------------------------------------------ the pool
 
@@ -104,6 +112,94 @@ __attribute__((constructor)) static void register_video_classes(void) {
     sp_register_class(@"Splash::Rendering::VideoPool", [SpVideoPool class]);
     sp_register_class(@"Splash::Rendering::DynamicSurfaceFactory", [SpDynamicSurfaceFactory class]);
 }
+
+// Where a player's frames go, and telling the framework their size.
+static NSArray<SpSurfacePool *> *target_pools(int surfaceId) {
+    SpVideoPool *pool = s_pools[@(surfaceId)];
+    return pool ? @[ pool ] : @[];
+}
+
+static void announce(int surfaceId, int width, int height, int aspectWidth, int aspectHeight) {
+    [s_pools[@(surfaceId)] announceWidth:width height:height aspectWidth:aspectWidth aspectHeight:aspectHeight];
+}
+
+#else
+
+// ------------------------------------------------------- XP's dynamic surfaces
+
+SpRenderContext *sp_render_context(uint32_t idContext);   // sp_core.m
+
+@interface SpXpDynamicSurface : NSObject
+@property (nonatomic) uint32_t context, preScenePool, inScenePool;
+@property (nonatomic) int width, height;        // what is arriving (0: nothing yet)
+@end
+@implementation SpXpDynamicSurface
+@end
+
+static NSMutableDictionary<NSNumber *, SpXpDynamicSurface *> *s_dynamic;   // by number (main thread)
+static int s_next_dynamic = 1;
+
+// The number is handed to the player as a 32-bit "surface" (VideoViewport
+// casts the pointer), so it is small, not a pointer.
+WMC_API HRESULT SpDynamicSurfaceCreate(uint32_t idContextRender, int deviceType, uint32_t idClassContext, uint32_t idDevice,
+                                       uint32_t preScene, uint32_t preScenePool, uint32_t inScene, uint32_t inScenePool,
+                                       void **dynamicSurface) {
+    __block int number;
+    sp_main_sync(^{
+        if (!s_dynamic) s_dynamic = [NSMutableDictionary dictionary];
+        number = s_next_dynamic++;
+        SpXpDynamicSurface *d = [SpXpDynamicSurface new];
+        d.context = idContextRender;
+        d.preScenePool = preScenePool;
+        d.inScenePool = inScenePool;
+        s_dynamic[@(number)] = d;
+    });
+    *dynamicSurface = (void *)(intptr_t)number;
+    WLOG("video", "dynamic image %d: pools %#x (before the scene) and %#x (in it)", number, preScenePool, inScenePool);
+    return S_OK;
+}
+
+// The rectangle of the surfaces that holds the picture.
+WMC_API HRESULT SpDynamicSurfaceGetContentArea(void *dynamicSurface, int category, int32_t rect[4]) {
+    __block int w = 0, h = 0;
+    sp_main_sync(^{
+        SpXpDynamicSurface *d = s_dynamic[@((int)(intptr_t)dynamicSurface)];
+        w = d.width;
+        h = d.height;
+    });
+    rect[0] = rect[1] = 0;
+    rect[2] = w;
+    rect[3] = h;
+    return S_OK;
+}
+
+WMC_API HRESULT SpDynamicSurfaceSetRetainSurfaces(void *dynamicSurface, WINBOOL retained) { return S_OK; }
+
+void sp_video_release(void *dynamicSurface) {
+    intptr_t number = (intptr_t)dynamicSurface;
+    if (number <= 0 || number >= 0x10000) return;   // (not one of these)
+    dispatch_async(dispatch_get_main_queue(), ^{ [s_dynamic removeObjectForKey:@((int)number)]; });
+}
+
+static NSArray<SpSurfacePool *> *target_pools(int surfaceId) {
+    SpXpDynamicSurface *d = s_dynamic[@(surfaceId)];
+    SpRenderContext *rc = d ? sp_render_context(d.context) : nil;
+    if (!rc) return @[];
+    NSMutableArray *out = [NSMutableArray array];
+    for (NSNumber *h in @[ @(d.inScenePool), @(d.preScenePool) ]) {
+        SpSurfacePool *p = [rc objectForHandle:h.unsignedIntValue];
+        if ([p isKindOfClass:SpSurfacePool.class]) [out addObject:p];
+    }
+    return out;
+}
+
+static void announce(int surfaceId, int width, int height, int aspectWidth, int aspectHeight) {
+    SpXpDynamicSurface *d = s_dynamic[@(surfaceId)];
+    d.width = width;
+    d.height = height;
+}
+
+#endif
 
 // ---------------------------------------------------------------- the players
 
@@ -292,24 +388,31 @@ WMC_API void wmc_video_set_surface(void *handle, int surfaceId) {
     });
 }
 
+// Copies a frame into the pools it is shown from.
+static void put_frame(NSArray<SpSurfacePool *> *pools, const void *bgra, size_t stride, int width, int height) {
+    for (SpSurfacePool *pool in pools) {
+        if (!pool.texture || pool.width != width || pool.height != height) [pool allocateWidth:width height:height format:2099336u];
+        [pool.texture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)width, (NSUInteger)height)
+                        mipmapLevel:0
+                          withBytes:bgra
+                        bytesPerRow:(NSUInteger)stride];
+    }
+}
+
 // FFmpeg's player: its picture due now, if it is a new one.
 static void present_ff(WmcVideo *v) {
     if (!v.surfaceId) return;
-    SpVideoPool *pool = s_pools[@(v.surfaceId)];
-    if (!pool) return;
+    NSArray<SpSurfacePool *> *pools = target_pools(v.surfaceId);
+    if (!pools.count) return;
     const uint8_t *bgra;
     int stride, width, height, shownW, shownH;
     if (!wmc_ff_take_frame(v.ff, &bgra, &stride, &width, &height)) return;
     wmc_ff_display_size(v.ff, &shownW, &shownH);
-    if (!pool.texture || pool.width != width || pool.height != height) [pool allocateWidth:width height:height format:2099336u];
-    [pool.texture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)width, (NSUInteger)height)
-                    mipmapLevel:0
-                      withBytes:bgra
-                    bytesPerRow:(NSUInteger)stride];
+    put_frame(pools, bgra, (size_t)stride, width, height);
     if (!v.announced) {
         v.announced = YES;
-        [pool announceWidth:width height:height aspectWidth:shownW aspectHeight:shownH];
-        WLOG("video", "first frame %dx%d (FFmpeg, shown as %dx%d) into pool %#x", width, height, shownW, shownH, pool.handle);
+        announce(v.surfaceId, width, height, shownW, shownH);
+        WLOG("video", "first frame %dx%d (FFmpeg, shown as %dx%d) into pool %#x", width, height, shownW, shownH, pools[0].handle);
     }
     sp_scene_invalidate();
 }
@@ -325,25 +428,21 @@ void sp_video_tick(void) {
             continue;
         }
         if (!v.surfaceId || v.item.status != AVPlayerItemStatusReadyToPlay) continue;
-        SpVideoPool *pool = s_pools[@(v.surfaceId)];
-        if (!pool) continue;
+        NSArray<SpSurfacePool *> *pools = target_pools(v.surfaceId);
+        if (!pools.count) continue;
         CMTime at = [v.output itemTimeForHostTime:host];
-        if (![v.output hasNewPixelBufferForItemTime:at] && pool.texture && v.announced) continue;
+        if (![v.output hasNewPixelBufferForItemTime:at] && pools[0].texture && v.announced) continue;
         CVPixelBufferRef frame = [v.output copyPixelBufferForItemTime:at itemTimeForDisplay:NULL];
         if (!frame) continue;
         int width = (int)CVPixelBufferGetWidth(frame), height = (int)CVPixelBufferGetHeight(frame);
-        if (!pool.texture || pool.width != width || pool.height != height) [pool allocateWidth:width height:height format:2099336u];
         CVPixelBufferLockBaseAddress(frame, kCVPixelBufferLock_ReadOnly);
-        [pool.texture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)width, (NSUInteger)height)
-                        mipmapLevel:0
-                          withBytes:CVPixelBufferGetBaseAddress(frame)
-                        bytesPerRow:CVPixelBufferGetBytesPerRow(frame)];
+        put_frame(pools, CVPixelBufferGetBaseAddress(frame), CVPixelBufferGetBytesPerRow(frame), width, height);
         CVPixelBufferUnlockBaseAddress(frame, kCVPixelBufferLock_ReadOnly);
         CVPixelBufferRelease(frame);
         if (!v.announced) {
             v.announced = YES;
-            [pool announceWidth:width height:height];
-            WLOG("video", "first frame %dx%d into pool %#x", width, height, pool.handle);
+            announce(v.surfaceId, width, height, width, height);
+            WLOG("video", "first frame %dx%d into pool %#x", width, height, pools[0].handle);
         }
         sp_scene_invalidate();
     }

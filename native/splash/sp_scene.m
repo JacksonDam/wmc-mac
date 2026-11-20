@@ -139,21 +139,34 @@ static SpRenderBuilder *take_content(SpObject *from, uint32_t handle) {
         case SpMsg_Visual_SetAlpha:
             _alpha = ((const struct Sp_RemoteVisual_SetAlpha *)msg)->bAlpha / 255.0f;
             break;
+#ifdef SP_HAS_MSG_Visual_SetLayer
         case SpMsg_Visual_SetLayer:
             _layer = ((const struct Sp_RemoteVisual_SetLayer *)msg)->layer;
             break;
+#endif
         case SpMsg_Visual_SetRotation: {
             const struct Sp_RemoteVisual_SetRotation *m = (const void *)msg;
             _axis = vec3(m->rotRotation.m_axis);
             _angle = m->rotRotation.m_angleRad;
             break;
         }
+#ifndef SP_HAS_MSG_Visual_SetCenterPointOffset
+        // XP Media Center Edition: one centre point, in pixels.
+        case SpMsg_Visual_SetCenterPoint:
+            _centerScale = (SpVec3){ 0, 0, 0 };
+            _centerOffset = vec3(((const struct Sp_RemoteVisual_SetCenterPoint *)msg)->vCenterPoint);
+            break;
+#endif
+#ifdef SP_HAS_MSG_Visual_SetCenterPointScale
         case SpMsg_Visual_SetCenterPointScale:
             _centerScale = vec3(((const struct Sp_RemoteVisual_SetCenterPointScale *)msg)->vCenterPointScale);
             break;
+#endif
+#ifdef SP_HAS_MSG_Visual_SetCenterPointOffset
         case SpMsg_Visual_SetCenterPointOffset:
             _centerOffset = vec3(((const struct Sp_RemoteVisual_SetCenterPointOffset *)msg)->vCenterPointOffset);
             break;
+#endif
         case SpMsg_Visual_SetScale:
             _scale = vec3(((const struct Sp_RemoteVisual_SetScale *)msg)->vScale);
             break;
@@ -264,7 +277,7 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
             SpSurface *s = [SpSurface new];
             s.handle = m->idNewSurface.value;
             s.context = self.context;
-            s.spClassName = @"Splash::Rendering::Surface";
+            s.spClassName = SP_CLASS("Rendering", "Surface");
             s.pool = self;
             [self.context registerObject:s];
             break;
@@ -288,11 +301,14 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
             }
             break;
         }
+#ifdef SP_HAS_MSG_SurfacePool_SetEmptyColor
         case SpMsg_SurfacePool_SetEmptyColor:
             _emptyColor = ((const struct Sp_RemoteSurfacePool_SetEmptyColor *)msg)->clrFill.value;
             break;
+#endif
         case SpMsg_SurfacePool_SetPriority:
             break;
+#ifdef SP_HAS_MSG_SurfacePool_Draw
         case SpMsg_SurfacePool_Draw: {
             const struct Sp_RemoteSurfacePool_Draw *m = (const void *)msg;
             SpDrawOp *op = [SpDrawOp new];
@@ -305,6 +321,7 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
             sp_scene_invalidate();
             break;
         }
+#endif
         default:
             [self spUnhandled:msg];
     }
@@ -604,9 +621,16 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
         case SpMsg_Gradient_Clear: [_stops removeAllObjects]; break;
         case SpMsg_Gradient_AddValue: {
             const struct Sp_RemoteGradient_AddValue *m = (const void *)msg;
+#ifdef SP_HAS_Sp_RemoteGradient_AddValue_relative
             [_stops addObject:@[ @(m->flValue), @(m->flPosition), @(m->relative) ]];
+#else
+            [_stops addObject:@[ @(m->flValue), @(m->flPosition), @(_relative) ]];
+#endif
             break;
         }
+#ifdef SP_HAS_MSG_Gradient_SetRelative
+        case SpMsg_Gradient_SetRelative: _relative = ((const struct Sp_RemoteGradient_SetRelative *)msg)->relative; break;
+#endif
         case SpMsg_Gradient_SetOffset: _offset = ((const struct Sp_RemoteGradient_SetOffset *)msg)->flOffset; break;
         case SpMsg_Gradient_SetColorMask: _colorMask = ((const struct Sp_RemoteGradient_SetColorMask *)msg)->clrMask.value; break;
         case SpMsg_Gradient_SetOrientation: _orientation = (int)((const struct Sp_RemoteGradient_SetOrientation *)msg)->dir; break;
@@ -616,6 +640,7 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
 
 @end
 
+#ifndef WMC_XP
 @interface SpLine : SpObject
 @end
 @implementation SpLine
@@ -623,8 +648,20 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
     if (msg->nMsg > SpMsg_Line_DrawPoint) [self spUnhandled:msg];
 }
 @end
+#endif
 
 // ----------------------------------------------------------------------- Device
+
+// Windows 7's and Vista's device class is NtDevice; XP Media Center
+// Edition's (the one the engine says it can be) is Dx9Device, with the same
+// messages under the same names.
+#ifdef WMC_XP
+#define DEVMSG(n) SpMsg_Dx9Device_##n
+#define DEVSTRUCT(n) struct Sp_RemoteDx9Device_##n
+#else
+#define DEVMSG(n) SpMsg_NtDevice_##n
+#define DEVSTRUCT(n) struct Sp_RemoteNtDevice_##n
+#endif
 
 @implementation SpDevice
 
@@ -632,11 +669,12 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
     _metal = sp_metal_device();
     if (!msg) return;
     // Every device class's Create carries the callback target in the same place.
-    const struct Sp_RemoteNtDevice_Create *m = (const void *)msg;
+    const DEVSTRUCT(Create) *m = (const void *)msg;
     if (msg->cbSize >= sizeof(*m)) {
         self.cbObject = m->objcb.value;
         self.cbContext = m->ctxcb.value;
     }
+#ifdef SP_HAS_MSG_DeviceCallback_OnCreated
     if (self.cbObject) {
         struct Sp_LocalDeviceCallback_OnCreated cb = {0};
         cb.size = sizeof(cb);
@@ -646,6 +684,7 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
         cb.fAllowDynamicPool = 1;
         [self.context sendCallback:&cb toContext:self.cbContext];
     }
+#endif
 }
 
 - (void)adopt:(SpObject *)obj handle:(uint32_t)handle name:(NSString *)name {
@@ -657,11 +696,11 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
 
 - (void)spMessage:(const SpMessage *)msg {
     switch (msg->nMsg) {
-        case SpMsg_NtDevice_Stop:
-        case SpMsg_NtDevice_Restart:
+        case DEVMSG(Stop):
+        case DEVMSG(Restart):
             break;
-        case SpMsg_NtDevice_DrawLine: {
-            const struct Sp_RemoteNtDevice_DrawLine *m = (const void *)msg;
+        case DEVMSG(DrawLine): {
+            const DEVSTRUCT(DrawLine) *m = (const void *)msg;
             SpDrawOp *op = [SpDrawOp new];
             op.kind = SpDrawLine;
             op.color = m->clrLine.value;
@@ -671,8 +710,8 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
             [builder(self, m->rb.value).ops addObject:op];
             break;
         }
-        case SpMsg_NtDevice_DrawOutline: {
-            const struct Sp_RemoteNtDevice_DrawOutline *m = (const void *)msg;
+        case DEVMSG(DrawOutline): {
+            const DEVSTRUCT(DrawOutline) *m = (const void *)msg;
             SpDrawOp *op = [SpDrawOp new];
             op.kind = SpDrawOutline;
             op.color = m->clrOutline.value;
@@ -681,8 +720,8 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
             [builder(self, m->rb.value).ops addObject:op];
             break;
         }
-        case SpMsg_NtDevice_DrawSolid: {
-            const struct Sp_RemoteNtDevice_DrawSolid *m = (const void *)msg;
+        case DEVMSG(DrawSolid): {
+            const DEVSTRUCT(DrawSolid) *m = (const void *)msg;
             SpDrawOp *op = [SpDrawOp new];
             op.kind = SpDrawSolid;
             op.color = m->clrFill.value;
@@ -690,17 +729,18 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
             [builder(self, m->rb.value).ops addObject:op];
             break;
         }
-        case SpMsg_NtDevice_CreateSurfacePool: {
-            const struct Sp_RemoteNtDevice_CreateSurfacePool *m = (const void *)msg;
+        case DEVMSG(CreateSurfacePool): {
+            const DEVSTRUCT(CreateSurfacePool) *m = (const void *)msg;
             SpSurfacePool *pool = [SpSurfacePool new];
             pool.device = self;
             pool.gutterX = m->sizeGutterPxl.m_width > 0 ? m->sizeGutterPxl.m_width : 0;
             pool.gutterY = m->sizeGutterPxl.m_height > 0 ? m->sizeGutterPxl.m_height : 0;
-            [self adopt:pool handle:m->idNewSurface.value name:@"Splash::Rendering::SurfacePool"];
+            [self adopt:pool handle:m->idNewSurface.value name:SP_CLASS("Rendering", "SurfacePool")];
             break;
         }
-        case SpMsg_NtDevice_CreateVideoPool: {
-            const struct Sp_RemoteNtDevice_CreateVideoPool *m = (const void *)msg;
+#ifndef WMC_XP
+        case DEVMSG(CreateVideoPool): {
+            const DEVSTRUCT(CreateVideoPool) *m = (const void *)msg;
             SpVideoPool *pool = [SpVideoPool new];
             pool.device = self;
             pool.ownerObject = m->objcbOwner.value;
@@ -708,25 +748,30 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
             [self adopt:pool handle:m->idNewSurface.value name:@"Splash::Rendering::VideoPool"];
             break;
         }
-        case SpMsg_NtDevice_CreateLine: {
-            const struct Sp_RemoteNtDevice_CreateLine *m = (const void *)msg;
+#endif
+#ifndef WMC_XP
+        case DEVMSG(CreateLine): {
+            const DEVSTRUCT(CreateLine) *m = (const void *)msg;
             [self adopt:[SpLine new] handle:m->idLine.value name:@"Splash::Rendering::Line"];
             break;
         }
-        case SpMsg_NtDevice_CreateGradient: {
-            const struct Sp_RemoteNtDevice_CreateGradient *m = (const void *)msg;
-            [self adopt:[SpGradient new] handle:m->idNewGradient.value name:@"Splash::Rendering::Gradient"];
+#endif
+        case DEVMSG(CreateGradient): {
+            const DEVSTRUCT(CreateGradient) *m = (const void *)msg;
+            [self adopt:[SpGradient new] handle:m->idNewGradient.value name:SP_CLASS("Rendering", "Gradient")];
             break;
         }
-        case SpMsg_NtDevice_DrawNotify:
-        case SpMsg_NtDevice_EndVideoSurfaceAllocation:
-        case SpMsg_NtDevice_BeginVideoSurfaceAllocation:
-        case SpMsg_NtDevice_Enter3DMode:
-        case SpMsg_NtDevice_RenderNowIfPossible:
-        case SpMsg_NtDevice_CreateTransferBuffer:
-        case SpMsg_NtDevice_SetMaxOverscan:
-        case SpMsg_NtDevice_SetDisplayOverscan:
-        case SpMsg_NtDevice_SetEnablePageFlip:
+        case DEVMSG(DrawNotify):
+        case DEVMSG(EndVideoSurfaceAllocation):
+        case DEVMSG(BeginVideoSurfaceAllocation):
+        case DEVMSG(Enter3DMode):
+        case DEVMSG(RenderNowIfPossible):
+        case DEVMSG(CreateTransferBuffer):
+#ifndef WMC_XP
+        case DEVMSG(SetMaxOverscan):
+        case DEVMSG(SetDisplayOverscan):
+#endif
+        case DEVMSG(SetEnablePageFlip):
             break;
         default:
             [self spUnhandled:msg];
@@ -743,9 +788,11 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
 
 - (BOOL)windowMessage:(const SpMessage *)msg {
     switch (msg->nMsg) {
+#ifdef SP_HAS_MSG_Window_SetBackgroundColor
         case SpMsg_Window_SetBackgroundColor:
             _backgroundColor = ((const struct Sp_RemoteWindow_SetBackgroundColor *)msg)->clrBack.value;
             break;
+#endif
         case SpMsg_Window_SetPerspectiveSettings: {
             const struct Sp_RemoteWindow_SetPerspectiveSettings *m = (const void *)msg;
             _zNear = m->flZn;
@@ -795,6 +842,22 @@ static BOOL format_is_32(uint32_t format) { return (format & 0x00F00000) == 0x00
 @end
 
 __attribute__((constructor)) static void register_scene_classes(void) {
+#ifdef WMC_XP
+    // XP Media Center Edition 2005: its device is a Dx9Device (the engine's
+    // capabilities say Direct3D 9 is there); lights and 3D models are
+    // declared but drawn as nothing.
+    sp_register_class(@"Splash::RenderBuilder", [SpRenderBuilder class]);
+    sp_register_class(@"Splash::Visual", [SpVisual class]);
+    sp_register_class(@"Splash::SurfacePool", [SpSurfacePool class]);
+    sp_register_class(@"Splash::Surface", [SpSurface class]);
+    sp_register_class(@"Splash::Rasterizer", [SpRasterizer class]);
+    sp_register_class(@"Splash::Gradient", [SpGradient class]);
+    sp_register_class(@"Splash::Dx9Device", [SpDevice class]);
+    sp_register_class(@"Splash::Window", [SpWindow class]);
+    sp_register_class(@"Splash::ParticleSystem", [SpQuietObject class]);
+    sp_register_class(@"Splash::Light", [SpQuietObject class]);
+    sp_register_class(@"Splash::Model", [SpQuietObject class]);
+#else
     sp_register_class(@"Splash::Rendering::RenderBuilder", [SpRenderBuilder class]);
     sp_register_class(@"Splash::Rendering::Visual", [SpVisual class]);
     sp_register_class(@"Splash::Rendering::SurfacePool", [SpSurfacePool class]);
@@ -811,4 +874,5 @@ __attribute__((constructor)) static void register_scene_classes(void) {
     sp_register_class(@"Splash::Rendering::WaitCursor", [SpQuietObject class]);
     // (declared by the protocol; nothing in Media Center makes one)
     sp_register_class(@"Splash::Rendering::ParticleSystem", [SpQuietObject class]);
+#endif
 }

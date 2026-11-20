@@ -4,9 +4,10 @@
     make_app.py <windows.iso> [--output FOLDER] [--work FOLDER]
                 [--name NAME] [--no-check]
 
-The disc image is Windows 7 or Windows Vista. The app is called "Windows
-Media Center", or "Windows Media Center (Vista)" for Vista's, so that both
-can be kept (each has its own settings).
+The disc image is Windows 7, Windows Vista, or Windows XP Media Center
+Edition 2005 (its second CD). The app is called "Windows Media Center",
+"Windows Media Center (Vista)" or "Windows Media Center (XP)", so that
+they can be kept side by side (each has its own settings).
 
 --output     where the app goes (default: /Applications if you can write
              there, else ~/Applications). An app of the same name is replaced.
@@ -34,13 +35,32 @@ TOOLS = os.path.join(ROOT, "tools")
 sys.path.insert(0, TOOLS)
 import peinfo  # noqa: E402
 
-BUNDLE_ID = "local.wmc-mac.media-center"           # Vista's: + "-vista"
+BUNDLE_ID = "local.wmc-mac.media-center"           # Vista's: + "-vista", XP's: + "-xp"
 MACOS_MIN = (11, 0)     # the oldest macOS the app runs on (Big Sur)
 
 
-def is_vista(ehome):
-    """Vista's Media Center is version 6.0 (Windows 7's 6.1)."""
-    return peinfo.version(os.path.join(ehome, "ehshell.dll")).startswith("6.0.")
+def shell_file(ehome):
+    """Media Center's main file: ehshell.dll (Windows 7, Vista), or
+    ehshell.exe (XP Media Center Edition, which has no ehshell.dll)."""
+    names = {n.lower(): n for n in os.listdir(ehome)}
+    return os.path.join(ehome, names.get("ehshell.dll") or names.get("ehshell.exe") or "ehshell.dll")
+
+
+def release(ehome):
+    """ "xp" (version 5.x, no ehshell.dll), "vista" (6.0) or "7" (6.1), as tools/build.py tells them."""
+    shell = shell_file(ehome)
+    version = peinfo.version(shell)
+    if shell.lower().endswith(".exe") and version.startswith("5."):
+        return "xp"
+    return "vista" if version.startswith("6.0.") else "7"
+
+
+# The app's name, bundle id suffix and build folder for each.
+RELEASES = {
+    "7": ("Windows Media Center", "", "build"),
+    "vista": ("Windows Media Center (Vista)", "-vista", "build-vista"),
+    "xp": ("Windows Media Center (XP)", "-xp", "build-xp"),
+}
 
 
 def step(text):
@@ -154,7 +174,7 @@ def unpack(installer, work, toolchain):
         shutil.rmtree(source)
     env = dict(os.environ, WMC_TOOLCHAIN=toolchain)
     if not installer.lower().endswith(".iso"):
-        fail("expected a Windows 7 or Windows Vista disc image (.iso)")
+        fail("expected a Windows 7, Windows Vista or Windows XP Media Center Edition 2005 disc image (.iso)")
     run([sys.executable, "-I", os.path.join(TOOLS, "extract_iso.py"), installer, source], env=env)
     with open(stamp_file, "w") as f:
         f.write(stamp)
@@ -167,7 +187,7 @@ def build(source, work, toolchain, ffmpeg):
     time to finish."""
     # Each Media Center version builds in a folder of its own: the build only
     # adds and replaces files, so one made after the other would mix them.
-    build_dir = os.path.join(work, "build-vista" if is_vista(os.path.join(source, "tree", "ehome")) else "build")
+    build_dir = os.path.join(work, RELEASES[release(os.path.join(source, "tree", "ehome"))][2])
     env = dict(os.environ, WMC_TOOLCHAIN=toolchain, WMC_TREE=os.path.join(source, "tree"), WMC_BUILD=build_dir)
     parts = [("tool", "Building the metadata tool"),
              ("gen", "Reading Media Center's interfaces"),
@@ -288,10 +308,13 @@ def too_new(app):
 
 
 def make_icon(ehome, out_icns, scratch):
-    """The app icon, from Media Center's own (in ehshell.dll)."""
+    """The app icon, from Media Center's own (in ehshell.dll; XP Media Center
+    Edition keeps its green button in ehres.dll)."""
     png = os.path.join(scratch, "icon.png")
+    names = {n.lower(): n for n in os.listdir(ehome)}
+    holder = "ehres.dll" if release(ehome) == "xp" else "ehshell.dll"
     try:
-        peinfo.icon_png(os.path.join(ehome, "ehshell.dll"), png)
+        peinfo.icon_png(os.path.join(ehome, names.get(holder, holder)), png)
     except (OSError, ValueError, KeyError, TypeError):
         return False
     iconset = os.path.join(scratch, "AppIcon.iconset")
@@ -354,11 +377,11 @@ def assemble(name, source, build_dir, toolchain, work):
 
     ehome = os.path.join(source, "tree", "ehome")
     has_icon = make_icon(ehome, os.path.join(res, "AppIcon.icns"), work)
-    version = peinfo.version(os.path.join(ehome, "ehshell.dll")) or "0.0.0.0"
+    version = peinfo.version(shell_file(ehome)) or "0.0.0.0"
     info = {
         "CFBundleDevelopmentRegion": "en",
         "CFBundleExecutable": name,
-        "CFBundleIdentifier": BUNDLE_ID + ("-vista" if is_vista(ehome) else ""),
+        "CFBundleIdentifier": BUNDLE_ID + RELEASES[release(ehome)][1],
         "CFBundleInfoDictionaryVersion": "6.0",
         "CFBundleName": name,
         "CFBundleDisplayName": name,
@@ -478,8 +501,7 @@ def main():
          "--parts", "7zip,mono,gdiplus"], substeps=True)
     BAR.begin("unpack")
     source = unpack(installer, work, toolchain)
-    vista = is_vista(os.path.join(source, "tree", "ehome"))
-    name = name or ("Windows Media Center (Vista)" if vista else "Windows Media Center")
+    name = name or RELEASES[release(os.path.join(source, "tree", "ehome"))][0]
     BAR.begin("build")
     build_dir = build(source, work, toolchain, ffmpeg)
     BAR.begin("assemble")

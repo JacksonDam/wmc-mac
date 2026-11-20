@@ -286,8 +286,19 @@ static LONG_PTR window_long(HWND hwnd, int index, bool set, LONG_PTR value) {
 
 WMC_API LONG_PTR GetWindowLongPtrW(HWND hwnd, int index) { return window_long(hwnd, index, false, 0); }
 WMC_API LONG_PTR SetWindowLongPtrW(HWND hwnd, int index, LONG_PTR value) { return window_long(hwnd, index, true, value); }
-WMC_API LONG GetWindowLongW(HWND hwnd, int index) { return (LONG)window_long(hwnd, index, false, 0); }
-WMC_API LONG SetWindowLongW(HWND hwnd, int index, LONG value) { return (LONG)window_long(hwnd, index, true, value); }
+// Code written for 32-bit Windows (XP Media Center Edition) subclasses a
+// window with SetWindowLong(GWL_WNDPROC, a delegate): the window procedure
+// is a whole pointer here, the old one returned whole. Every other value
+// is 32 bits, as on Windows.
+WMC_API LONG_PTR GetWindowLongW(HWND hwnd, int index) {
+    LONG_PTR v = window_long(hwnd, index, false, 0);
+    return index == GWLP_WNDPROC ? v : (LONG)v;
+}
+WMC_API LONG_PTR SetWindowLongW(HWND hwnd, int index, LONG_PTR value) {
+    if (index != GWLP_WNDPROC) value = (LONG)value;
+    LONG_PTR old = window_long(hwnd, index, true, value);
+    return index == GWLP_WNDPROC ? old : (LONG)old;
+}
 
 WMC_API HWND GetParent(HWND hwnd) {
     WmcWindow *w = lookup(hwnd);

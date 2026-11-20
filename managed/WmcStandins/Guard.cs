@@ -12,7 +12,11 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
+#if XP
+using eHome.UI;               // XP Media Center Edition's UI framework (EhCM.dll)
+#else
 using Microsoft.MediaCenter.UI;
+#endif
 using ServiceBus.UIFramework;
 
 namespace WmcStandins

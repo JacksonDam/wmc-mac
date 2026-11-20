@@ -14,6 +14,7 @@
 typedef NS_ENUM(int, SpAnimProperty) {
     SpAnimAlpha, SpAnimColor, SpAnimPosition, SpAnimScale, SpAnimSize, SpAnimRotation,
     SpAnimGradientOffset, SpAnimGradientColorMask,
+    SpAnimLight,   // (XP Media Center Edition's lights are not drawn)
 };
 
 typedef NS_ENUM(int, SpInterp) {
@@ -36,6 +37,8 @@ typedef struct {
 - (float)duration;
 - (BOOL)decoration;
 - (void)tick:(CFTimeInterval)now;
+- (SpKeyframe *)frame:(int)index;
+- (void)addLink:(uint32_t)next;
 @end
 
 static NSHashTable<SpAnimation *> *s_playing;
@@ -139,6 +142,10 @@ static uint32_t floats_to_argb(const float v[4]) {
     return self;
 }
 
+- (void)addLink:(uint32_t)next {
+    [_links addObject:@(next)];
+}
+
 - (SpKeyframe *)frame:(int)index {
     if (index < 0 || index > 4096) return NULL;
     if (index >= _count) {
@@ -163,6 +170,7 @@ static uint32_t floats_to_argb(const float v[4]) {
         case SpAnimRotation: v[0] = vis.axis.x; v[1] = vis.axis.y; v[2] = vis.axis.z; v[3] = vis.angle; break;
         case SpAnimGradientOffset: v[0] = grad.offset; break;
         case SpAnimGradientColorMask: argb_to_floats(grad.colorMask, v); break;
+        case SpAnimLight: break;
     }
 }
 
@@ -178,6 +186,7 @@ static uint32_t floats_to_argb(const float v[4]) {
         case SpAnimRotation: vis.axis = (SpVec3){ v[0], v[1], v[2] }; vis.angle = v[3]; break;
         case SpAnimGradientOffset: grad.offset = v[0]; break;
         case SpAnimGradientColorMask: grad.colorMask = floats_to_argb(v); break;
+        case SpAnimLight: return;
     }
     if (self.decoration) sp_scene_invalidate_looping();
     else sp_scene_invalidate();
@@ -234,7 +243,7 @@ static uint32_t floats_to_argb(const float v[4]) {
         f[i].dynamic = NO;
     }
     if (wmc_log_enabled("anim")) {
-        static const char *const names[] = { "alpha", "color", "position", "scale", "size", "rotation", "grad-offset", "grad-mask" };
+        static const char *const names[] = { "alpha", "color", "position", "scale", "size", "rotation", "grad-offset", "grad-mask", "light" };
         NSMutableString *desc = [NSMutableString string];
         for (int i = 0; i < _count; i++) [desc appendFormat:@" %.2fs=%.3g,%.3g,%.3g", f[i].time, f[i].v[0], f[i].v[1], f[i].v[2]];
         wmc_log("anim", "play %#x %s on %#x (now %.3g,%.3g,%.3g) repeat %d stop %d:%s", self.handle, names[_property],
@@ -298,9 +307,13 @@ static uint32_t floats_to_argb(const float v[4]) {
 }
 
 - (void)spMessage:(const SpMessage *)msg {
+#ifndef WMC_XP
     // Every keyframe message starts with the keyframe index.
     const struct Sp_RemoteAnimation_SetLinear *head = (const void *)msg;
+#endif
     switch (msg->nMsg) {
+#ifndef WMC_XP
+        // (XP Media Center Edition sets keyframes through the AnimationBuilder class)
         case SpMsg_Animation_AddCompletionLink:
             [_links addObject:@(((const struct Sp_RemoteAnimation_AddCompletionLink *)msg)->aniToPlayNext.value)];
             break;
@@ -391,6 +404,7 @@ static uint32_t floats_to_argb(const float v[4]) {
             if (k) k->v[0] = m->flValue;
             break;
         }
+#endif
         case SpMsg_Animation_RemoveCallback: {
             const struct Sp_RemoteAnimation_RemoveCallback *m = (const void *)msg;
             [_callbacks removeObject:@[ @(m->objcb.value), @(m->ctxcb.value) ]];
@@ -464,6 +478,144 @@ BOOL sp_animation_settling(void) {
 }
 
 // --------------------------------------------------------------- AnimationManager
+
+#ifdef WMC_XP
+// XP Media Center Edition 2005: one static class, AnimationBuilder, builds
+// animations and sets their keyframes (naming the animation in each
+// message). Its dynamic keyframes have no value of their own: they stand for
+// the property as it is when the animation starts. Lights and models are
+// not drawn, so animations of a light run their time and change nothing.
+
+@interface SpAnimationBuilder : SpObject
+@end
+
+static NSTimer *s_xp_timer;
+
+static SpAnimation *xp_animation(SpRenderContext *context, uint32_t handle) {
+    SpAnimation *a = [context objectForHandle:handle];
+    return [a isKindOfClass:[SpAnimation class]] ? a : nil;
+}
+
+static void xp_build(SpRenderContext *context, SpAnimProperty property, uint32_t subject, uint32_t handle) {
+    SpAnimation *a = [SpAnimation new];
+    a.handle = handle;
+    a.context = context;
+    a.spClassName = @"Splash::Animation";
+    a.property = property;
+    a.target = [context objectForHandle:subject];
+    [context registerObject:a];
+}
+
+@implementation SpAnimationBuilder
+
++ (void)spStaticMessage:(const SpMessage *)msg context:(SpRenderContext *)context {
+    // Build messages: subject, then the new handle. Keyframe messages: the
+    // animation, then the keyframe index.
+    const struct Sp_RemoteAnimationBuilder_BuildAlphaAnimation *b = (const void *)msg;
+    const struct Sp_RemoteAnimationBuilder_SetLinear *k = (const void *)msg;
+    switch (msg->nMsg) {
+        case SpMsg_AnimationBuilder_StartupAnimationManager:
+            // Keeps animations moving (and their completion callbacks
+            // arriving) when no window is drawing frames, as in offscreen runs.
+            if (!s_xp_timer) {
+                s_xp_timer = [NSTimer timerWithTimeInterval:1.0 / 60 repeats:YES block:^(NSTimer *t) { sp_animation_tick(); }];
+                [NSRunLoop.mainRunLoop addTimer:s_xp_timer forMode:NSRunLoopCommonModes];
+            }
+            return;
+        case SpMsg_AnimationBuilder_ShutdownAnimationManager:
+            [s_xp_timer invalidate];
+            s_xp_timer = nil;
+            return;
+        case SpMsg_AnimationBuilder_PulseTimeAdvance:
+            return;
+        case SpMsg_AnimationBuilder_SetGlobalSpeedAdjustment: {
+            float f = ((const struct Sp_RemoteAnimationBuilder_SetGlobalSpeedAdjustment *)msg)->flFactor;
+            s_speed = f > 0 ? f : 1;
+            return;
+        }
+        case SpMsg_AnimationBuilder_AddCompletionLink: {
+            const struct Sp_RemoteAnimationBuilder_AddCompletionLink *m = (const void *)msg;
+            [xp_animation(context, m->aniSubject.value) addLink:m->aniToPlayNext.value];
+            return;
+        }
+        case SpMsg_AnimationBuilder_BuildAlphaAnimation: xp_build(context, SpAnimAlpha, b->viSubject.value, b->idAnimation.value); return;
+        case SpMsg_AnimationBuilder_BuildColorAnimation: xp_build(context, SpAnimColor, b->viSubject.value, b->idAnimation.value); return;
+        case SpMsg_AnimationBuilder_BuildPositionAnimation: xp_build(context, SpAnimPosition, b->viSubject.value, b->idAnimation.value); return;
+        case SpMsg_AnimationBuilder_BuildScaleAnimation: xp_build(context, SpAnimScale, b->viSubject.value, b->idAnimation.value); return;
+        case SpMsg_AnimationBuilder_BuildSizeAnimation: xp_build(context, SpAnimSize, b->viSubject.value, b->idAnimation.value); return;
+        case SpMsg_AnimationBuilder_BuildRotationAnimation: xp_build(context, SpAnimRotation, b->viSubject.value, b->idAnimation.value); return;
+        // (a gradient's animation moves its offset)
+        case SpMsg_AnimationBuilder_BuildGradientAnimation: xp_build(context, SpAnimGradientOffset, b->viSubject.value, b->idAnimation.value); return;
+        case SpMsg_AnimationBuilder_BuildLightAnimation:
+        case SpMsg_AnimationBuilder_BuildLightDiffuseAnimation:
+        case SpMsg_AnimationBuilder_BuildLightDirectionAnimation:
+        case SpMsg_AnimationBuilder_BuildLightPositionAnimation:
+            xp_build(context, SpAnimLight, b->viSubject.value, b->idAnimation.value);
+            return;
+    }
+    SpAnimation *a = xp_animation(context, k->ani.value);
+    SpKeyframe *f = a ? [a frame:k->idxKeyframe] : NULL;
+    if (!f) {
+        if (!a) WLOG("err", "AnimationBuilder message %u for unknown animation %#x", msg->nMsg, k->ani.value);
+        return;
+    }
+    switch (msg->nMsg) {
+        case SpMsg_AnimationBuilder_SetLinear: f->interp = SpInterpLinear; break;
+        case SpMsg_AnimationBuilder_SetSCurve:
+            f->interp = SpInterpSCurve;
+            f->weight = ((const struct Sp_RemoteAnimationBuilder_SetSCurve *)msg)->flScale;
+            break;
+        case SpMsg_AnimationBuilder_SetExponential:
+            f->interp = SpInterpExp;
+            f->weight = ((const struct Sp_RemoteAnimationBuilder_SetExponential *)msg)->flScale;
+            break;
+        case SpMsg_AnimationBuilder_SetLogrithmic:
+            f->interp = SpInterpLog;
+            f->weight = ((const struct Sp_RemoteAnimationBuilder_SetLogrithmic *)msg)->flScale;
+            break;
+        case SpMsg_AnimationBuilder_SetFloat:
+            f->v[0] = ((const struct Sp_RemoteAnimationBuilder_SetFloat *)msg)->flValue;
+            break;
+        case SpMsg_AnimationBuilder_SetVector3: {
+            const struct Sp_RemoteAnimationBuilder_SetVector3 *m = (const void *)msg;
+            f->v[0] = m->vValue.m_x; f->v[1] = m->vValue.m_y; f->v[2] = m->vValue.m_z;
+            break;
+        }
+        case SpMsg_AnimationBuilder_SetColor:
+            argb_to_floats(((const struct Sp_RemoteAnimationBuilder_SetColor *)msg)->clrValue.value, f->v);
+            break;
+        case SpMsg_AnimationBuilder_SetColorF:
+            memcpy(f->v, &((const struct Sp_RemoteAnimationBuilder_SetColorF *)msg)->clrfValue, sizeof(float) * 4);
+            break;
+        case SpMsg_AnimationBuilder_SetRotation: {
+            const struct Sp_RemoteAnimationBuilder_SetRotation *m = (const void *)msg;
+            f->v[0] = m->rot.m_axis.m_x; f->v[1] = m->rot.m_axis.m_y; f->v[2] = m->rot.m_axis.m_z; f->v[3] = m->rot.m_angleRad;
+            break;
+        }
+        case SpMsg_AnimationBuilder_SetDynamicFloat:
+        case SpMsg_AnimationBuilder_SetDynamicVector3:
+        case SpMsg_AnimationBuilder_SetDynamicColor:
+        case SpMsg_AnimationBuilder_SetDynamicRotation:
+            // the current value: one times it
+            f->dynamic = YES;
+            f->multiply = YES;
+            f->v[0] = f->v[1] = f->v[2] = f->v[3] = 1;
+            break;
+        case SpMsg_AnimationBuilder_SetLight:
+            break;
+        default:
+            WLOG("todo", "AnimationBuilder message %u is not handled", msg->nMsg);
+    }
+}
+
+@end
+
+__attribute__((constructor)) static void register_animation_classes(void) {
+    sp_register_class(@"Splash::AnimationBuilder", [SpAnimationBuilder class]);
+    sp_register_class(@"Splash::Animation", [SpAnimation class]);
+}
+
+#else
 
 @interface SpAnimationManager : SpObject
 @end
@@ -541,3 +693,4 @@ __attribute__((constructor)) static void register_animation_classes(void) {
     sp_register_class(@"Splash::Rendering::AnimationManager", [SpAnimationManager class]);
     sp_register_class(@"Splash::Rendering::Animation", [SpAnimation class]);
 }
+#endif

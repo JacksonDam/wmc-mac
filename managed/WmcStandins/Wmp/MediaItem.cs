@@ -213,7 +213,14 @@ namespace WmcStandins.Wmp
         public override int get_imageSourceHeight() { return 0; }
         public override int getAttributeCountByType(string type, string language)
         {
+#if XP
+            // XP Media Center Edition loads an embedded picture by its URL,
+            // which only Windows Media Player could serve; with none, it
+            // takes the album's cover file (XpMusic.cs), as its other pages do.
+            if (string.Equals(type, "WM/Picture", StringComparison.OrdinalIgnoreCase)) return 0;
+#else
             if (string.Equals(type, "WM/Picture", StringComparison.OrdinalIgnoreCase)) return ArtworkPath != null ? 1 : 0;
+#endif
             return Get(type).Length > 0 ? 1 : 0;
         }
         public override object getItemInfoByType(string type, string language, int index)

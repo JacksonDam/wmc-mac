@@ -11,7 +11,7 @@
 #   <declaring type>::<method>  =>  @stub         (replace the method's own body the same way;
 #                                                  needed for virtual and reflection calls)
 # Blank lines and lines starting with # are ignored. A rule starting with
-# [vista] or [7] applies only when patching that version of Media Center.
+# [xp], [vista] or [7] applies only when patching that version of Media Center.
 
 System.Diagnostics.Process::set_PriorityClass => Process_set_PriorityClass
 
@@ -138,12 +138,23 @@ Microsoft.MediaCenter.Interop.UIHelper::EhGetCDBurnDRMInfo => Drm_Info
 # Video files are played by the Mac (WmcStandins/Playback/MacPlayer.cs)
 # instead of the native player in mcplayerinterop.dll.
 Microsoft.MediaCenter.Playback.PlayerTable::FindPlayerType => Playback_FindPlayerType
-# Vista's makes a COM player for files instead (WmcStandins/Playback/VistaPlayer.cs).
+# Vista's and XP's make a COM player for files instead (WmcStandins/Playback/VistaPlayer.cs).
 [vista] ehiPlay.WmpOcxPlayerClass::.ctor => Vista_NewFilePlayer
+[xp] ehiPlay.WmpOcxPlayerClass::.ctor => Vista_NewFilePlayer
 # Vista's has no recording service here, which it reports as missing
 # components after a video and on recorded TV: nothing to tell (WmcStandins/VistaTv.cs).
 [vista] MediaCenter.Video.RecordHelper::HandleComponentRegistrationFailure => @body Vista_RecorderMissing
 [vista] MediaCenter.Video.RecordHelper::LoadRecordingML => @body Vista_NoRecordingService
+# XP Media Center Edition's crash reporters start rundll32.exe and dwwin.exe
+# (Mono would hand them to "open"): the failure is logged instead (WmcStandins/XpShell.cs).
+[xp] CrashReporting.Watson::HandleFailure => @body Xp_CrashReport
+[xp] Microsoft.Ehome.Epg.CrashReporting.Watson::DumpAndTerminate => @body Xp_GuideCrashReport
+# The exceptions it catches go to a log its retail build never opens: to ours instead.
+[xp] eHome.Debug.eDebug::DumpExceptionToLog => @body Xp_DebugException
+# libgdiplus aborts on an empty DrawImage, which GDI+ does nothing for (WmcStandins/XpDrawing.cs).
+[xp] System.Drawing.Graphics::DrawImage => Graphics_DrawImage
+# Album covers: from Media Center's art cache, not the song's folder (WmcStandins/XpMusic.cs).
+[xp] EHMedia.EHMedia2::GetGuidArtFileName => @body Xp_AlbumArtFile
 
 # The playback code's diagnostic log goes to the "trace" log channel.
 Microsoft.MediaCenter.Playback.Log::TraceError => @body PlaybackLog

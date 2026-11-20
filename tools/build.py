@@ -48,13 +48,15 @@ FRIENDS = ["WmcProbe", "WmcHost", "WmcStandins"]
 # Generated base classes for COM stand-ins: (output, interop assembly, classes).
 COM_BASES = [
     ("WmcComBases.dll", "ehiwmp.dll", [
-        "PlayerBase=IWMPPlayer4+_WMPOCXEvents_Event+IWMPLibraryServices+IWMPPlayerServices2+IWMPFolderMonitorServices",
+        # (A| = optional: XP Media Center Edition's WMP 10 interop has no library
+        # services, queries or second versions of the collections)
+        "PlayerBase=IWMPPlayer4+_WMPOCXEvents_Event+IWMPLibraryServices|+IWMPPlayerServices2|+IWMPFolderMonitorServices|",
         "MediaBase=IWMPMedia3",
         "PlaylistBase=IWMPPlaylist",
-        "MediaCollectionBase=IWMPMediaCollection2",
-        "StringCollectionBase=IWMPStringCollection2",
-        "QueryBase=IWMPQuery",
-        "LibraryBase=IWMPLibrary2|IWMPLibrary",       # Vista: IWMPLibrary only
+        "MediaCollectionBase=IWMPMediaCollection2|IWMPMediaCollection",
+        "StringCollectionBase=IWMPStringCollection2|IWMPStringCollection",
+        "QueryBase=IWMPQuery|",
+        "LibraryBase=IWMPLibrary2|IWMPLibrary|",      # Vista: IWMPLibrary only
         "ControlsBase=IWMPControls3",
         "SettingsBase=IWMPSettings2",
         "NetworkBase=IWMPNetwork",
@@ -74,17 +76,36 @@ COM_BASES = [
 
 
 def release():
-    """Which Media Center the tree holds: "vista" (6.0) or "7" (6.1), from
-    ehshell.dll's version."""
+    """Which Media Center the tree holds: "xp" (Windows XP Media Center
+    Edition 2005: 5.1, whose shell is the managed ehshell.exe), "vista" (6.0)
+    or "7" (6.1), from the shell's version."""
     names = os.listdir(EHOME) if os.path.isdir(EHOME) else []
     shell = next((n for n in names if n.lower() == "ehshell.dll"), None)
+    if not shell:
+        exe = next((n for n in names if n.lower() == "ehshell.exe"), None)
+        if exe and peinfo.version(os.path.join(EHOME, exe)).startswith("5."):
+            return "xp"
     return "vista" if shell and peinfo.version(os.path.join(EHOME, shell)).startswith("6.0.") else "7"
 
 
+def ui_framework():
+    """The assembly with the UI framework and its render protocol: XP keeps
+    it in EhCM.dll."""
+    return os.path.join(EHOME, "EhCM.dll" if release() == "xp" else "Microsoft.MediaCenter.UI.dll")
+
+
 def csc_defines():
-    """Our C# is compiled with VISTA defined for Vista's Media Center, whose
-    assemblies lack some of the types Windows 7's stand-ins are built on."""
-    return ["-define:VISTA"] if release() == "vista" else []
+    """Our C# is compiled with VISTA or XP defined for those Media Centers,
+    whose assemblies lack some of the types Windows 7's stand-ins are built
+    on."""
+    return {"vista": ["-define:VISTA"], "xp": ["-define:XP"]}.get(release(), [])
+
+
+def compile_refs():
+    """The reference copies our C# is compiled against: every library, and
+    on XP the shell too (its UI framework classes are in ehshell.exe)."""
+    names = sorted(os.listdir(REFS))
+    return [n for n in names if n.lower().endswith(".dll") or (release() == "xp" and n.lower() == "ehshell.exe")]
 
 
 def run(cmd, **kw):
@@ -121,8 +142,7 @@ def step_tool():
 def step_gen():
     os.makedirs(GEN, exist_ok=True)
     run([MONO, WMCTOOL, "pinvokes", EHOME, os.path.join(GEN, "pinvokes.tsv")])
-    run([MONO, WMCTOOL, "protocol", os.path.join(EHOME, "Microsoft.MediaCenter.UI.dll"),
-         os.path.join(GEN, "splash_protocol.h")])
+    run([MONO, WMCTOOL, "protocol", ui_framework(), os.path.join(GEN, "splash_protocol.h")])
     run([sys.executable, "-I", os.path.join(ROOT, "tools", "gen_stubs.py"),
          os.path.join(GEN, "pinvokes.tsv"), os.path.join(GEN, "stubs.c"),
          os.path.join(GEN, "mono.config"), DYLIB])
@@ -148,18 +168,19 @@ def step_native():
     headers = sources("native", (".h",)) + [os.path.join(GEN, "splash_protocol.h")]
     # Different flags from last time: everything is compiled again.
     stamp = os.path.join(objdir, "flags")
-    flags = " ".join(CFLAGS)
+    flags = " ".join(CFLAGS + (["-DWMC_XP=1"] if release() == "xp" else []))
     if not os.path.exists(stamp) or open(stamp).read() != flags:
         for name in os.listdir(objdir):
             if name.endswith(".o"):
                 os.remove(os.path.join(objdir, name))
     objs = []
     jobs = []
+    defines = ["-DWMC_XP=1"] if release() == "xp" else []   # XP Media Center Edition's protocol and needs
     for s in srcs:
         o = os.path.join(objdir, os.path.relpath(s, ROOT).replace(os.sep, "_") + ".o")
         objs.append(o)
         if newer(o, [s] + headers):
-            cmd = ["clang", "-c"] + CFLAGS + [
+            cmd = ["clang", "-c"] + CFLAGS + defines + [
                    "-I" + os.path.join(ROOT, "native", "core"), "-I" + os.path.join(ROOT, "native"),
                    "-I" + GEN, "-o", o, s]
             if s.endswith(".m"):
@@ -188,7 +209,7 @@ def step_standins():
     os.makedirs(APP, exist_ok=True)
     src = sources(os.path.join("managed", "WmcStandins"), (".cs",))
     out = os.path.join(APP, "WmcStandins.dll")
-    refs = [os.path.join(REFS, n) for n in sorted(os.listdir(REFS)) if n.lower().endswith(".dll")]
+    refs = [os.path.join(REFS, n) for n in compile_refs()]
     if newer(out, src + refs):
         run([MONO, CSC, "-nologo", "-debug", "-unsafe", "-target:library", "-nowarn:1701,1702,0436,0618",
              "-out:" + out] + csc_defines() + ["-r:" + r for r in refs] + ["-r:System.Drawing.dll", "-r:System.Xml.dll", "-r:System.Core.dll"] + src)
@@ -240,10 +261,10 @@ def step_refs():
 
 
 def step_host():
-    refs = ["-r:" + os.path.join(REFS, n) for n in sorted(os.listdir(REFS))
-            if n.lower().endswith(".dll")]
+    refs = ["-r:" + os.path.join(REFS, n) for n in compile_refs()]
     refs += ["-r:" + os.path.join(APP, "WmcStandins.dll"), "-r:System.Drawing.dll", "-r:System.Xml.dll"]
-    for name in ("WmcProbe", "WmcHost"):
+    # (WmcProbe tries markup on Windows 7's and Vista's framework; XP's is another)
+    for name in ("WmcHost",) if release() == "xp" else ("WmcProbe", "WmcHost"):
         src = sources(os.path.join("managed", name), (".cs",))
         if not src:
             continue

@@ -1,7 +1,8 @@
 // Media Center Installer: makes a Mac app of Windows Media Center from the
-// person's own Windows 7 or Vista disc image. The work is done by the project's
-// tools/make_app.sh (carried in the app's Resources/project); this window
-// chooses its inputs and shows its progress lines ("step: ...", "error: ...").
+// person's own Windows 7, Vista or XP Media Center Edition 2005 disc image. The
+// work is done by the project's tools/make_app.sh (carried in the app's
+// Resources/project); this window chooses its inputs and shows its progress
+// lines ("step: ...", "error: ...").
 //
 // It runs on macOS 11 and later: SwiftUI's views in an AppKit window (the
 // one-window scene and content-sized windows came in macOS 13), and no Swift
@@ -264,7 +265,7 @@ final class BuildModel: ObservableObject {
 
     func chooseSource() {
         let panel = NSOpenPanel()
-        panel.message = "Choose a Windows 7 or Windows Vista disc image (.iso)"
+        panel.message = "Choose a Windows 7, Windows Vista or Windows XP Media Center Edition 2005 (CD 2) disc image (.iso)"
         panel.allowedContentTypes = [UTType(filenameExtension: "iso")].compactMap { $0 }
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url { _ = accept(url) }
@@ -327,7 +328,7 @@ struct Header: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Media Center Installer")
                     .font(.title2.weight(.semibold))
-                Text("Makes a Mac app of Windows Media Center from your own Windows 7 or Vista disc.")
+                Text("Makes a Mac app of Windows Media Center from your own Windows 7, Vista or XP Media Center Edition disc.")
                     .foregroundColor(.secondary)
             }
             Spacer()
@@ -349,9 +350,10 @@ struct SetupView: View {
                 FolderRow(title: "Put the app in", url: model.output) {
                     model.chooseFolder(\.output, message: "Choose where to put Windows Media Center")
                 }
-                // (Vista's app has a name of its own: which one is replaced
-                // is known only once the disc is opened.)
-                if ["Windows Media Center.app", "Windows Media Center (Vista).app"].contains(where: {
+                // (Vista's and XP's apps have names of their own: which one is
+                // replaced is known only once the disc is opened.)
+                if ["Windows Media Center.app", "Windows Media Center (Vista).app",
+                    "Windows Media Center (XP).app"].contains(where: {
                     FileManager.default.fileExists(atPath: model.output.appendingPathComponent($0).path) }) {
                     Text("A Windows Media Center app already there from the same Windows version will be replaced. Its settings are kept.")
                         .font(.callout)
@@ -387,7 +389,7 @@ struct SourcePicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Windows 7 or Vista disc image")
+            Text("Windows 7, Vista or XP Media Center disc image")
                 .font(.headline)
             HStack(spacing: 14) {
                 Image(systemName: model.source == nil ? "opticaldisc" : "opticaldisc.fill")

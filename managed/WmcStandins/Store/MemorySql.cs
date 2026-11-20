@@ -11,6 +11,9 @@
 // grouped with parentheses. Literals are numbers, 'quoted strings', null,
 // true and false; anything else is kept as its text. Anything else is
 // reported on the "todo" log channel and does nothing.
+// Windows 7 and Vista: XP Media Center Edition's counterparts differ.
+#if !XP
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -288,3 +291,5 @@ namespace WmcStandins.Store
         }
     }
 }
+
+#endif

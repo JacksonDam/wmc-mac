@@ -4,6 +4,9 @@
 // device manager is made without its native work queue and never starts
 // looking: the Extender pages open and list no Extenders (see
 // managed/redirects.txt).
+// Windows 7 and Vista: XP Media Center Edition's Extender support differs.
+#if !XP
+
 using System;
 using System.Collections;
 using System.Reflection;
@@ -22,3 +25,5 @@ namespace WmcStandins
         }
     }
 }
+
+#endif

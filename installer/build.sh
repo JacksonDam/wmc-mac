@@ -16,7 +16,7 @@ xcrun swiftc -parse-as-library -O -target arm64-apple-macos11.0 \
 
 project="$app/Contents/Resources/project"
 mkdir -p "$project/tools/app" "$project/managed"
-for f in make_app.sh make_app.py setup_toolchain.py extract_iso.py hive.py peinfo.py build.py \
+for f in make_app.sh make_app.py setup_toolchain.py extract_iso.py hive.py peinfo.py rgs.py build.py \
          gen_stubs.py setup_registry.py; do
     cp "tools/$f" "$project/tools/"
 done

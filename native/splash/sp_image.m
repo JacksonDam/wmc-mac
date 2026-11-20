@@ -14,6 +14,15 @@
 
 typedef struct { int32_t w, h; } SpSizeI;
 typedef struct Sp_RenderApi_ImageInformation SpImageInfo;
+// XP Media Center Edition's image information is flat; Windows 7's and
+// Vista's keep the size and format in a Header and the pixels in Data.
+#ifdef WMC_XP
+#define IMG_HEADER(i) (*(i))
+#define IMG_DATA(i) (*(i))
+#else
+#define IMG_HEADER(i) ((i)->Header)
+#define IMG_DATA(i) ((i)->Data)
+#endif
 typedef struct Sp_ImageRequirements SpImageReq;
 
 enum { SpBitmapDecode = 1, SpBitmapFlip = 2 };
@@ -44,12 +53,12 @@ static HRESULT finish(CGImageSourceRef source, const SpImageReq *req, int option
             h = MAX(1, (int)floor(h * s));
         }
     }
-    info->Header.sizeActualPxl.m_width = w;
-    info->Header.sizeActualPxl.m_height = h;
-    info->Header.sizeOriginalPxl.m_width = ow;
-    info->Header.sizeOriginalPxl.m_height = oh;
-    info->Header.nStride = w * 4;
-    info->Header.nFormat = SP_FORMAT_ARGB32;
+    IMG_HEADER(info).sizeActualPxl.m_width = w;
+    IMG_HEADER(info).sizeActualPxl.m_height = h;
+    IMG_HEADER(info).sizeOriginalPxl.m_width = ow;
+    IMG_HEADER(info).sizeOriginalPxl.m_height = oh;
+    IMG_HEADER(info).nStride = w * 4;
+    IMG_HEADER(info).nFormat = SP_FORMAT_ARGB32;
 
     SpBitmap *bmp = calloc(1, sizeof(*bmp));
     bmp->magic = SP_BITMAP_MAGIC;
@@ -76,7 +85,7 @@ static HRESULT finish(CGImageSourceRef source, const SpImageReq *req, int option
             }
         }
         bmp->pixels = pixels;
-        info->Data.rgData = (int64_t)(intptr_t)pixels;
+        IMG_DATA(info).rgData = (int64_t)(intptr_t)pixels;
     }
     CGImageRelease(image);
     *handle = bmp;
@@ -130,10 +139,10 @@ WMC_API HRESULT SpBitmapLoadRaw(SpSizeI size, int stride, uint32_t format, const
                                 int options, void **handle, SpImageInfo *info) {
     memset(info, 0, sizeof(*info));
     int w = size.w, h = size.h;
-    info->Header.sizeActualPxl.m_width = info->Header.sizeOriginalPxl.m_width = w;
-    info->Header.sizeActualPxl.m_height = info->Header.sizeOriginalPxl.m_height = h;
-    info->Header.nStride = w * 4;
-    info->Header.nFormat = SP_FORMAT_ARGB32;
+    IMG_HEADER(info).sizeActualPxl.m_width = IMG_HEADER(info).sizeOriginalPxl.m_width = w;
+    IMG_HEADER(info).sizeActualPxl.m_height = IMG_HEADER(info).sizeOriginalPxl.m_height = h;
+    IMG_HEADER(info).nStride = w * 4;
+    IMG_HEADER(info).nFormat = SP_FORMAT_ARGB32;
     SpBitmap *bmp = calloc(1, sizeof(*bmp));
     bmp->magic = SP_BITMAP_MAGIC;
     if ((options & SpBitmapDecode) && data && w > 0 && h > 0) {
@@ -154,7 +163,7 @@ WMC_API HRESULT SpBitmapLoadRaw(SpSizeI size, int stride, uint32_t format, const
             }
         }
         bmp->pixels = out;
-        info->Data.rgData = (int64_t)(intptr_t)out;
+        IMG_DATA(info).rgData = (int64_t)(intptr_t)out;
     }
     *handle = bmp;
     return S_OK;

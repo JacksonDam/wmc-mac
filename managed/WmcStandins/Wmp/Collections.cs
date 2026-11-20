@@ -9,18 +9,32 @@ using ehiwmp;
 
 namespace WmcStandins.Wmp
 {
-    // Conditions joined by "and", in groups joined by "or".
+    // Conditions joined by "and", in groups joined by "or". (XP Media Center
+    // Edition's Windows Media Player 10 has no queries: there it is only the
+    // collections' own.)
+#if XP
+    public sealed class Query
+#else
     public sealed class Query : QueryBase
+#endif
     {
         struct Condition { public string Attribute, Operator, Value; }
         readonly List<List<Condition>> _groups = new List<List<Condition>> { new List<Condition>() };
 
+#if XP
+        public void addCondition(string attribute, string op, string value)
+#else
         public override void addCondition(string attribute, string op, string value)
+#endif
         {
             _groups[_groups.Count - 1].Add(new Condition { Attribute = attribute, Operator = op, Value = value ?? "" });
         }
 
+#if XP
+        public void beginNextGroup()
+#else
         public override void beginNextGroup()
+#endif
         {
             if (_groups[_groups.Count - 1].Count > 0) _groups.Add(new List<Condition>());
         }
@@ -188,6 +202,7 @@ namespace WmcStandins.Wmp
 
         public override int get_count() { return Groups.Count; }
         public override string Item(int index) { return index >= 0 && index < Groups.Count ? Groups[index].Value : ""; }
+#if !XP   // (IWMPStringCollection2: not in Windows Media Player 10)
         public override bool isIdentical(IWMPStringCollection2 other) { return ReferenceEquals(other, this); }
         public override string getItemInfo(int index, string name)
         {
@@ -217,6 +232,7 @@ namespace WmcStandins.Wmp
             if (string.Equals(type, Attribute, StringComparison.OrdinalIgnoreCase) && Groups[index].Items[0].Typed(type) is string) return Groups[index].Value;
             return Groups[index].Items[0].getItemInfoByType(type, language, attributeIndex);
         }
+#endif
     }
 
     public sealed class MediaCollection : MediaCollectionBase
@@ -240,19 +256,36 @@ namespace WmcStandins.Wmp
             return q;
         }
 
+#if !XP   // (IWMPMediaCollection2: not in Windows Media Player 10)
         public override IWMPQuery createQuery() { return new Query(); }
 
         public override IWMPPlaylist getPlaylistByQuery(IWMPQuery query, string mediaType, string sortAttribute, bool ascending)
         {
-            var items = Select(query as Query, mediaType);
+            return PlaylistWhere(query as Query, mediaType, sortAttribute, ascending);
+        }
+
+        public override IWMPStringCollection getStringCollectionByQuery(string attribute, IWMPQuery query, string mediaType, string sortAttribute, bool ascending)
+        {
+            return StringsWhere(attribute, query as Query, mediaType, sortAttribute, ascending);
+        }
+
+        public override IWMPPlaylist getByAttributeAndMediaType(string attribute, string value, string mediaType)
+        {
+            return PlaylistWhere(Where(attribute, value), mediaType, null, true);
+        }
+#endif
+
+        Playlist PlaylistWhere(Query query, string mediaType, string sortAttribute, bool ascending)
+        {
+            var items = Select(query, mediaType);
             Sorting.Sort(items, sortAttribute, ascending);
             ComTodo.Log("wmpq", string.Format("playlist where {0} type {1} sort {2}: {3} items", query, mediaType, sortAttribute, items.Count));
             return new Playlist("", items);
         }
 
-        public override IWMPStringCollection getStringCollectionByQuery(string attribute, IWMPQuery query, string mediaType, string sortAttribute, bool ascending)
+        StringCollection StringsWhere(string attribute, Query query, string mediaType, string sortAttribute, bool ascending)
         {
-            var items = Select(query as Query, mediaType);
+            var items = Select(query, mediaType);
             Sorting.Sort(items, null, true);
             var collection = new StringCollection(attribute);
             var index = new Dictionary<string, StringCollection.Group>(StringComparer.CurrentCultureIgnoreCase);
@@ -285,15 +318,11 @@ namespace WmcStandins.Wmp
         public override IWMPPlaylist getByAlbum(string album) { return getByAttribute("Album", album); }
         public override IWMPPlaylist getByAttribute(string attribute, string value)
         {
-            return getPlaylistByQuery(Where(attribute, value), null, null, true);
-        }
-        public override IWMPPlaylist getByAttributeAndMediaType(string attribute, string value, string mediaType)
-        {
-            return getPlaylistByQuery(Where(attribute, value), mediaType, null, true);
+            return PlaylistWhere(Where(attribute, value), null, null, true);
         }
         public override IWMPStringCollection getAttributeStringCollection(string attribute, string mediaType)
         {
-            return getStringCollectionByQuery(attribute, null, mediaType, attribute, true);
+            return StringsWhere(attribute, null, mediaType, attribute, true);
         }
         public override IWMPMedia add(string url)
         {
@@ -308,6 +337,7 @@ namespace WmcStandins.Wmp
         public override int getMediaAtom(string name) { return 0; }
     }
 
+#if !XP   // (IWMPLibrary: not in Windows Media Player 10)
     public sealed class Library : LibraryBase
     {
         readonly MediaCollection _collection;
@@ -320,4 +350,5 @@ namespace WmcStandins.Wmp
         public override string getItemInfo(string name) { return ""; }     // IWMPLibrary2 (not in Vista)
 #endif
     }
+#endif
 }

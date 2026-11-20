@@ -11,6 +11,10 @@ namespace WmcStandins
         {
             // "English3x4InputModule": text entry with a remote control's number keys.
             { new Guid("C77A3910-BAB0-4A38-A0A1-405FA9257C1B"), typeof(Input.KeypadInputModule) },
+#if XP
+            // XP Media Center Edition looks its input modules up by category.
+            { XpCategoryManager.ClassId, typeof(XpCategoryManager) },
+#endif
         };
 
         public static Type Find(Guid clsid)

@@ -16,6 +16,9 @@
 
 typedef struct { float w, h; } SpSizeF;
 typedef struct { int32_t w, h; } SpSizeI;
+// Rich text (SpRichText*): Windows 7's and Vista's; XP Media Center Edition
+// draws its text with GDI (sp_gdi_text.m).
+#ifndef WMC_XP
 typedef struct Sp_RenderApi_RasterizeRunPacket SpRunPacket;
 typedef HRESULT (*SpReportRun)(SpRunPacket *run, void *data);
 
@@ -44,6 +47,7 @@ typedef HRESULT (*SpReportRun)(SpRunPacket *run, void *data);
     return self;
 }
 @end
+#endif
 
 // ---- fonts ---------------------------------------------------------------------
 
@@ -193,6 +197,7 @@ static uint32_t colorref_to_argb(uint32_t cr) {
 
 // ---- exported -------------------------------------------------------------------
 
+#ifndef WMC_XP
 WMC_API HRESULT SpRichTextBuildObject(WINBOOL richMode, SpSizeI maxSurface, void **handle) {
     SpRichText *rt = [SpRichText new];
     rt.richMode = richMode != 0;
@@ -439,6 +444,7 @@ WMC_API HRESULT SpRichTextAntiAlias(void *handle, HBITMAP oversampled, uint32_t 
     rect->bottom = h;
     return S_OK;
 }
+#endif
 
 WMC_API HRESULT SpDibCreate(SpSizeI size, uint32_t clear, HBITMAP *bitmap, void **bits) {
     void *pixels = NULL;
@@ -473,14 +479,18 @@ WMC_API HRESULT SpDx9DeviceCheckCaps(struct Sp_RenderApi_Dx9DriverInfo *info) {
     info->sizeMinTexturePxl.m_width = info->sizeMinTexturePxl.m_height = 1;
     info->sizeMaxTexturePxl.m_width = info->sizeMaxTexturePxl.m_height = 4096;
     info->cbTotalVideoMemory = 1024ll * 1024 * 1024;
+#ifdef SP_HAS_Sp_RenderApi_Dx9DriverInfo_cbDedicatedVideoMemory
     info->cbDedicatedVideoMemory = 1024ll * 1024 * 1024;
+#endif
     info->nDxCaps = 1;   // "Required" capabilities present
     return S_OK;
 }
 
+#ifndef WMC_XP     // (XP Media Center Edition has no sound device)
 WMC_API HRESULT SpDx9SoundDeviceCheckCaps(struct Sp_RenderApi_Dx9SoundDriverInfo *info) {
     info->nMinSecondarySampleRate = 100;
     info->nMaxSecondarySampleRate = 200000;
     info->nDxCaps = 1;
     return S_OK;
 }
+#endif

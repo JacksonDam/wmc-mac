@@ -38,6 +38,10 @@ static SpRenderContext *render_context(uint32_t idContext) {
     return rc;
 }
 
+SpRenderContext *sp_render_context(uint32_t idContext) {
+    return render_context(idContext);
+}
+
 WmcThreadQueue *sp_app_queue(uint32_t idContext) {
     SpAppContext *c = app_context(idContext);
     return c ? c->queue : NULL;
@@ -56,10 +60,26 @@ typedef struct {
     void *data;
 } SpDelivery;
 
+#ifdef WMC_XP
+// XP Media Center Edition 2005's buffer header carries no contexts: the
+// destination is SpBufferOpen's first argument, the source the caller's own.
+typedef struct {
+    uint32_t idBuffer;
+    uint32_t nFlags;
+    uint32_t cbSizeBuffer;
+} SpXpBufferInfo;
+#endif
+
 // Runs on the application thread, from inside its Sp*Message call.
 static void deliver_to_app(void *p) {
     SpDelivery *d = p;
+#ifdef WMC_XP
+    SpXpBufferInfo xp = { d->info.idBuffer, d->info.nFlags, d->info.cbSizeBuffer };
+    typedef int32_t (*XpProc)(void *, uint32_t, SpXpBufferInfo *, void *);
+    if (d->app->proc) ((XpProc)d->app->proc)(d->app->procData, d->app->idContext, &xp, d->data);
+#else
     if (d->app->proc) d->app->proc(d->app->procData, d->app->idContext, &d->info, d->data);
+#endif
     free(d->data);
     free(d);
 }
@@ -152,9 +172,22 @@ WMC_API HRESULT SpRenderThreadUninit(void *pThread) {
     return S_OK;
 }
 
+#ifdef WMC_XP
+WMC_API HRESULT SpBufferOpen(uint32_t idContextDest, const SpXpBufferInfo *xp, void *data) {
+    SpBufferInfo info = {
+        .idContextSrc = wmc_threadq_current()->sp_context,
+        .idContextDest = idContextDest,
+        .idBuffer = xp->idBuffer,
+        .nFlags = xp->nFlags,
+        .cbSizeBuffer = xp->cbSizeBuffer,
+    };
+    return sp_post_buffer(info, data);
+}
+#else
 WMC_API HRESULT SpBufferOpen(SpBufferInfo *info, void *data) {
     return sp_post_buffer(*info, data);
 }
+#endif
 
 // The framework calls this when it has finished with a buffer we delivered;
 // deliver_to_app frees it after the callback returns.
@@ -254,7 +287,12 @@ WMC_API HRESULT SpUnregisterTraceCallback(void *cb) { return S_OK; }
 WMC_API void SpTraceEvent_US(uint32_t code, uint32_t level, const WCHAR *desc) {}
 WMC_API void SpTraceEvent_5QS(uint32_t code, uint32_t level, const WCHAR *desc, uint64_t a, uint64_t b,
                               uint64_t c, uint64_t d, uint64_t e) {}
+#ifdef WMC_XP
+void sp_video_release(void *dynamicSurface);   // sp_video.m
+WMC_API void SpObjectRelease(void *unknown) { sp_video_release(unknown); }
+#else
 WMC_API void SpObjectRelease(void *unknown) {}
+#endif
 
 WMC_API HRESULT SpDestroyObject(uint32_t handle) {
     WLOG("sp", "SpDestroyObject %#x", handle);

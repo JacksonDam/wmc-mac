@@ -75,6 +75,13 @@ namespace WmcStandins
             lock (s_axSites) s_axSites[host] = site;
         }
 
+        // Not in Mono: the last Win32 error as an HRESULT.
+        public static int Marshal_GetHRForLastWin32Error()
+        {
+            int e = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+            return e == 0 ? 0 : unchecked((int)(0x80070000u | (uint)(e & 0xFFFF)));
+        }
+
         // Releasing a stand-in (which is not a COM object) is not an error.
         public static int Marshal_ReleaseComObject(object o)
         {
@@ -173,7 +180,7 @@ namespace WmcStandins
         // go to the Mac's player; everything else (discs, TV recordings,
         // network streams) to Media Center's own choice, which then reports
         // that it cannot start.
-#if !VISTA
+#if !VISTA && !XP
         public static string Playback_FindPlayerType(Uri uri, bool remote, out string assemblyName)
         {
             if (uri != null && uri.IsFile)
@@ -190,6 +197,7 @@ namespace WmcStandins
         }
 #endif
 
+#if !XP
         // Is a file protected (Windows Media DRM), and what does its licence
         // allow? Nothing that can be opened here is protected.
         public static void Drm_Info(string file, Microsoft.MediaCenter.Interop.UIHelper.DRMInfoStruct info)
@@ -198,6 +206,7 @@ namespace WmcStandins
             info.status = Microsoft.MediaCenter.Interop.UIHelper.DRMStatus.NotDRMProtected;
             info.dwCategory = Microsoft.MediaCenter.Interop.UIHelper.DRM_LICENSE_STATE_CATEGORY.WM_DRM_LICENSE_STATE_UNLIM;
         }
+#endif
 
         // An exception left a guarded call (see "@guard" in redirects.txt).
         public static void Swallowed(Exception e, string where)

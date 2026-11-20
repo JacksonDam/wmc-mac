@@ -66,7 +66,7 @@ test media and the picture sheets).
 ## Sources of Media Center
 
 A Windows 7 disc gives Media Center 6.1.7601, a Windows Vista SP2 disc
-6.0.6002 (`tools/extract_iso.py` handles both). The disc keeps each edition
+6.0.6002 (`tools/extract_iso.py` handles both, and XP's CD: see below). The disc keeps each edition
 as an image in `sources/install.wim`; the first one with `Windows/ehome` is
 used. Its registry entries come from that image's `SOFTWARE` hive
 (`tools/hive.py` reads the hive format and picks Media Center's settings and
@@ -117,6 +117,56 @@ Where Vista differs:
   it quiet: recorded TV says no shows have been recorded. (A stand-in for
   the class itself is not possible: some callers keep it in fields typed
   as the class, whose calls go to the class's own slots.)
+
+### Windows XP Media Center Edition 2005
+
+Its second CD keeps Media Center 5.1.2700 in one cabinet
+(`CMPNENTS/MEDIACTR/I386/MEDIACTR.CAB`), which becomes the ehome folder.
+There is no registry hive: XP's set-up ran its COM servers' registration
+scripts, so `tools/rgs.py` reads the same scripts (ATL `REGISTRY`
+resources) out of the servers. `build.py` knows it by `ehshell.exe` 5.x
+and no `ehshell.dll`, compiles C# with `XP` and the engine with
+`WMC_XP`, and rules for it start with `[xp]`; `make_app.py` builds it in
+`build-xp` as "Windows Media Center (XP)". It is .NET 1.0 code with its
+own UI framework (`EhCM.dll`, namespace `eHome.*`) and `ehshell.exe` is
+managed (`WmcHost` calls its `UserControlPoint.Main`).
+
+- **Render protocol:** the same engine with other names. The generator
+  gives XP's fields Windows 7's names (`__size`, `__msgid` and
+  `__idObjectSubject` lose their underscores, geometry gains `m_`,
+  `eHome.Native.Win32` is `Win32Api`), so only a handful of messages
+  really differ. Classes are not grouped (`Splash::Visual`: `SP_CLASS` in
+  `sp.h`); the device is a `Dx9Device`; buffers name their destination as
+  `SpBufferOpen`'s first argument; input comes with the form window's own
+  `OnInput` (no input router); the hit masks are traversable 1, hittable 2,
+  returnable 4. Animations are built and their keyframes set through one
+  static class, `AnimationBuilder`; a dynamic keyframe stands for the value
+  when the animation starts. `Visual.SetCenterPoint` is in pixels.
+  Interface sounds are `WAVE` resources played with `PlaySound`, directly
+  or through `DesktopManager.PlaySound` (`native/win32/winmm_sound.m`).
+- **32-bit code:** handles are often declared as `int`: events and
+  mutexes (`native/win32/kernel32_sync.c`, XP only) are small numbers, and
+  `SetWindowLong(GWL_WNDPROC)` keeps the whole pointer. Functions declared
+  with no character set are tried by Mono under their plain name first,
+  before the `A` one, so `CreateMutex` and the like exist under both.
+- **Windows Media Player 10:** its interop has no library services,
+  queries or second versions of the collections. `bases.cs` takes `A|`
+  for an interface that may be missing, and the WMP stand-in leaves those
+  members out; music plays through the same player as on Windows 7.
+- **Video:** the same COM player as Vista's (`VistaPlayer.cs`). A dynamic
+  image is two ordinary surfaces, each the whole of a pool of its own (one
+  drawn before the scene for full-screen video, one in it), which XP draws
+  itself; `SpDynamicSurfaceCreate` names the pair with a small number
+  (XP hands it to the player cast to 32 bits) and the frames go into both
+  pools. At the end the player stops, as Windows Media Player does.
+- **Text entry:** XP finds its input modules through COM's component
+  category manager; `XpCategories.cs` answers from the registry. Without it
+  every page with a text box waits for ever.
+- **Other `[xp]` rules:** the crash reporters (they would start
+  `dwwin.exe`, which Mono hands to `open`) log instead; the exceptions XP
+  catches go to the `err` and `exc` log channels (`eDebug`); `DrawImage`
+  skips empty draws and draws other formats from a 32-bit copy (libgdiplus
+  aborts on both); album covers come from the art cache.
 
 ## Windows Media and AVI files
 
@@ -253,9 +303,9 @@ on Windows, instead of being reported and stepped around (see Guard below).
 
 `tools/crawl.py` opens every place listed in `tools/crawl_targets.txt` (each
 start-menu tile, each settings page, folders, albums, playing a song, a
-picture, a video; Vista's start menu is laid out differently:
-`--targets tools/crawl_targets_vista.txt` with a Vista `WMC_TREE` and
-`WMC_BUILD`), each in its own offscreen run from a freshly installed
+picture, a video; Vista's and XP's start menus are laid out differently:
+`--targets tools/crawl_targets_vista.txt` or `crawl_targets_xp.txt` with
+that version's `WMC_TREE` and `WMC_BUILD`), each in its own offscreen run from a freshly installed
 registry and a made-up media folder (`tools/make_fixtures.py`), and reports
 what stopped, what froze, which exceptions were guarded and which unwritten
 functions were reached. `build/crawl/overview_*.png` shows every target before
@@ -380,8 +430,8 @@ themselves.
 
 ```
 tools/      make_app.sh, make_app.py, app/launcher.c, setup_toolchain.py, extract_iso.py, hive.py,
-            peinfo.py, extract_msi.py, decompile.py, build.py, run.py, gen_stubs.py, setup_registry.py,
-            list_resources.py, crawl.py, crawl_one.sh, crawl_targets.txt,
+            rgs.py, peinfo.py, extract_msi.py, decompile.py, build.py, run.py, gen_stubs.py,
+            setup_registry.py, list_resources.py, crawl.py, crawl_one.sh, crawl_targets*.txt,
             make_fixtures.py, shell_try.sh, nav_try.sh, record_show.sh, screenrec.swift,
             measure/ (logo_width.py, compare_launch.py)
 installer/  the SwiftUI installer (Sources/InstallerApp.swift, build.sh, make_icon.swift)

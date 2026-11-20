@@ -422,6 +422,9 @@ WMC_API WINBOOL UnmapViewOfFile(void *address) {
 // Closes what this file's functions handed out. Other handles (most are
 // stand-ins that hold nothing) are accepted and left alone.
 WMC_API WINBOOL CloseHandle(void *handle) {
+#ifdef WMC_XP
+    if (wmc_sync_close(handle)) return 1;   // events and mutexes (kernel32_sync.c)
+#endif
     WmcMapping *m = as_mapping(handle);
     if (m) {
         m->magic = 0;

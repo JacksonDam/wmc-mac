@@ -56,3 +56,8 @@ size_t wmc_utf16_copy(WCHAR *dst, size_t cap, const char *src);
 // ---- last error ------------------------------------------------------------
 void wmc_set_last_error(DWORD e);
 DWORD wmc_get_last_error(void);
+
+#ifdef WMC_XP
+// kernel32_sync.c: closes an event or mutex handle; false if it is not one.
+bool wmc_sync_close(void *handle);
+#endif

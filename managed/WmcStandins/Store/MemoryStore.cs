@@ -19,8 +19,8 @@
 //     GetNextRow steps to the next row, which ReadRow copies out;
 //   - rows go in and out as byte buffers laid out by the accessors the store
 //     gives it (MemAccessor).
-// Windows 7 only: Vista's object store has an older interface.
-#if !VISTA
+// Windows 7 only (not Vista or XP): Vista's object store has an older interface.
+#if !VISTA && !XP
 
 using System;
 using System.Collections.Generic;

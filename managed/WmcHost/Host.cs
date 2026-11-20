@@ -3,7 +3,8 @@
 // On Windows a small native program (ehshell.exe) starts the .NET runtime and
 // calls ServiceBus.UIFramework.UserControlPoint.Launch in ehshell.dll. This
 // does the same from managed code, on the framework's "application" thread,
-// with the Mac's main thread left to AppKit.
+// with the Mac's main thread left to AppKit. (XP Media Center Edition's
+// ehshell.exe is itself .NET: its Main is called the same way.)
 //
 //   tools/run.py WmcHost [Media Center command-line arguments]
 using System;
@@ -32,8 +33,14 @@ static class Host
             int code = 1;
             try
             {
+#if XP
+                ServiceBus.UIFramework.UserControlPoint.Main(args);
+                code = 0;
+                Console.Error.WriteLine("host: Main returned");
+#else
                 code = ServiceBus.UIFramework.UserControlPoint.Launch(string.Join(" ", args));
                 Console.Error.WriteLine("host: Launch returned " + code);
+#endif
             }
             catch (Exception e)
             {
@@ -45,7 +52,7 @@ static class Host
             }
             finally { wmc_stop_main_loop(code); }
         }, 16 * 1024 * 1024);
-        // Launch names its own thread ("Application"), and a name can be set only once.
+        // Launch (Main on XP) names its own thread ("Application"), and a name can be set only once.
         app.SetApartmentState(ApartmentState.STA);
         app.Start();
         return wmc_run_main_loop();

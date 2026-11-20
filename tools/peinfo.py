@@ -18,8 +18,10 @@ import tempfile
 RT_ICON, RT_GROUP_ICON, RT_VERSION = 3, 14, 16
 
 
-def resources(path):
-    """{type: {id: data}} for the program's numbered resources (first language of each)."""
+def resources(path, named=False):
+    """{type: {id: data}} for the program's numbered resources (first language
+    of each). With named=True, named types and names are included too, as
+    their upper-case strings ("REGISTRY")."""
     with open(path, "rb") as f:
         b = f.read()
     pe = struct.unpack_from("<I", b, 0x3C)[0]
@@ -46,10 +48,17 @@ def resources(path):
     base = offset(rsrc_rva)
 
     def entries(at):
-        named, ids = struct.unpack_from("<HH", b, base + at + 12)
-        for i in range(named + ids):
+        count_named, ids = struct.unpack_from("<HH", b, base + at + 12)
+        for i in range(count_named + ids):
             name, target = struct.unpack_from("<II", b, base + at + 16 + 8 * i)
-            yield (None if name & 0x80000000 else name), target
+            if name & 0x80000000:
+                if not named:
+                    yield None, target
+                    continue
+                at_name = base + (name & 0x7FFFFFFF)
+                length = struct.unpack_from("<H", b, at_name)[0]
+                name = b[at_name + 2:at_name + 2 + 2 * length].decode("utf-16-le", "replace").upper()
+            yield name, target
 
     out = {}
     for rtype, t in entries(0):

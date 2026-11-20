@@ -136,7 +136,9 @@ def run_target(name, keys, linger, app=None):
     lines = [l for l in text.splitlines() if not NOISE.search(l)]
     result = {"name": name, "code": code, "frames": len(frames), "expected": len(FRAMES)}
     # The innermost exception the host reported, or Mono's own crash report.
-    host = [i for i, l in enumerate(lines) if l.startswith("host: ") and "Launch returned" not in l]
+    # (Not the host's own last line: "Launch returned", "Main returned" on XP.)
+    host = [i for i, l in enumerate(lines) if l.startswith("host: ") and "Launch returned" not in l
+            and "Main returned" not in l]
     result["exception"] = ""
     if host:
         i = host[-1]

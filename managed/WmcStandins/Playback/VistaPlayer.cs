@@ -6,7 +6,11 @@
 // through the same native player as Windows 7's stand-in (MacPlayer), into
 // the dynamic surface Media Center made for the video (its id comes with
 // Initialize). Positions are in 10 ms units.
-#if VISTA
+//
+// XP Media Center Edition 2005 plays a video file through the same class
+// and interfaces (its window and surface are 32-bit numbers; the surface is
+// the dynamic image's, from SpDynamicSurfaceCreate in native/splash/sp_video.m).
+#if VISTA || XP
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -61,9 +65,13 @@ namespace WmcStandins.Playback
             if (_events != null) _events.StateChange(previous, state);
         }
 
+#if XP
+        public override void Initialize(uint hwnd, uint surface, IPlayerEvents events, VideoRenderer renderer)
+#else
         public override void Initialize(IntPtr hwnd, int surface, IPlayerEvents events, VideoRenderer renderer)
+#endif
         {
-            _surface = surface;
+            _surface = (int)surface;
             _events = events;
             Log("initialised, surface " + surface + ", renderer " + renderer);
             SetState(PlayerState.state_Initialized);
@@ -164,10 +172,22 @@ namespace WmcStandins.Playback
             if (wmc_video_state(video) != 3) return;
             _endOfMedia = true;
             Log("end of media");
+#if XP
+            // XP Media Center Edition expects the player to stop at the end
+            // as Windows Media Player does (it shows its "stopped" overlay,
+            // and Play starts again from the beginning).
+            eHome.UI.Application.DeferredInvoke(delegate
+            {
+                if (_events == null || _video != video) return;
+                _events.EndOfMedia(null);
+                if (_video == video) SetState(PlayerState.state_Stop);
+            });
+#else
             Microsoft.MediaCenter.UI.Application.DeferredInvoke(delegate
             {
                 if (_events != null && _video == video) _events.EndOfMedia(null);
             });
+#endif
         }
 
         public override long GetPosition() { return _video == IntPtr.Zero ? 0 : (long)(wmc_video_position(_video) * 100); }
@@ -201,7 +221,24 @@ namespace WmcStandins.Playback
         public override float GetPlayRate() { return _rate; }
         public override PlayerState GetState() { return _state; }
         public override bool GetReadyState() { return _video != IntPtr.Zero; }
+#if VISTA
         public override bool GetDownresState() { return false; }
+#endif
+#if XP
+        // What XP Media Center Edition lays the picture out by: all of each
+        // frame is picture, in the video's own shape, with no overscan.
+        public override void GetPresentationInformation(uint cbSize, out _tagPresentationInformation info)
+        {
+            int w = 0, h = 0;
+            if (_video != IntPtr.Zero) wmc_video_size(_video, out w, out h);
+            info = new _tagPresentationInformation();
+            info.rcSourcePxl.right = w;
+            info.rcSourcePxl.bottom = h;
+            info.sizeAspect.cx = w > 0 && h > 0 ? w : 4;
+            info.sizeAspect.cy = w > 0 && h > 0 ? h : 3;
+            info.nOverscanMode = _tagOverscanMode.om_None;
+        }
+#endif
 
         public override void GetNativeContentSize(out uint width, out uint height)
         {

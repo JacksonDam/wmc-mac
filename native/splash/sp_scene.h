@@ -114,6 +114,7 @@ void sp_video_tick(void);
 @property (nonatomic) float offset;
 @property (nonatomic) uint32_t colorMask;
 @property (nonatomic, readonly) NSMutableArray<NSArray<NSNumber *> *> *stops;   // value, position, relative
+@property (nonatomic) int relative;   // XP Media Center Edition: one setting for every stop
 @end
 
 @interface SpDevice : SpObject

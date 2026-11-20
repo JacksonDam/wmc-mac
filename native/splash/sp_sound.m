@@ -9,6 +9,10 @@
 #import "sp.h"
 #import "sp_classes.h"
 
+// Windows 7's and Vista's sound classes. XP Media Center Edition has none: it
+// plays its sounds through the desktop manager (sp_window.m).
+#ifndef WMC_XP
+
 typedef struct Sp_RenderApi_SoundHeader SpSoundHeader;
 typedef struct Sp_RenderApi_SoundInformation SpSoundInfo;
 
@@ -204,3 +208,5 @@ __attribute__((constructor)) static void register_sound_classes(void) {
     sp_register_class(@"Splash::Rendering::SoundBuffer", [SpSoundBuffer class]);
     sp_register_class(@"Splash::Rendering::Sound", [SpSound class]);
 }
+
+#endif

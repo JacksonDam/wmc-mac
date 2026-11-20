@@ -14,6 +14,9 @@
 //   130 a string (UTF-16, no terminator; compared ignoring case, as the
 //   original database did), 128 bytes (also case-sensitive strings and
 //   arrays; compared byte by byte): as long as the value.
+// Windows 7 and Vista: XP Media Center Edition's counterparts differ.
+#if !XP
+
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -494,3 +497,5 @@ namespace WmcStandins.Store
         }
     }
 }
+
+#endif

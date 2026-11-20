@@ -9,7 +9,11 @@ using System;
 using System.Collections.Generic;
 using WmcComBases;
 using ehiwmp;
+#if XP
+using Timer = eHome.UI.Timer;
+#else
 using Timer = Microsoft.MediaCenter.UI.Timer;
+#endif
 
 namespace WmcStandins.Wmp
 {
@@ -20,7 +24,9 @@ namespace WmcStandins.Wmp
         public static Player Instance { get { return s_instance ?? (s_instance = new Player()); } }
 
         readonly MediaCollection _collection = new MediaCollection();
+#if !XP
         readonly Library _library;
+#endif
         readonly Controls _controls;
         internal readonly Settings Settings;
         readonly Network _network = new Network();
@@ -40,7 +46,9 @@ namespace WmcStandins.Wmp
 
         Player()
         {
+#if !XP
             _library = new Library(_collection);
+#endif
             _controls = new Controls(this);
             Settings = new Settings(this);
             _playlists = new PlaylistCollection(this);
@@ -319,6 +327,7 @@ namespace WmcStandins.Wmp
 
         void ConnectSkin()
         {
+#if !XP   // (XP Media Center Edition's visualizations are not connected yet)
             var services = Site as IWMPRemoteMediaServices;
             if (services == null) return;
             try
@@ -333,6 +342,7 @@ namespace WmcStandins.Wmp
             {
                 ComTodo.Log("wmp", "skin: " + e.Message);
             }
+#endif
         }
         public override bool get_enableContextMenu() { return _enableContextMenu; }
         public override void set_enableContextMenu(bool value) { _enableContextMenu = value; }
@@ -392,6 +402,7 @@ namespace WmcStandins.Wmp
             _media = null;
         }
 
+#if !XP   // (library and folder services: not in Windows Media Player 10)
         // ---- IWMPLibraryServices, IWMPPlayerServices2 ---------------------------------
 
         public override int getCountByType(WMPLibraryType type)
@@ -423,6 +434,7 @@ namespace WmcStandins.Wmp
         public override int get_updateProgress() { return 100; }
         public override void startScan() { }
         public override void stopScan() { }
+#endif
     }
 
     public sealed class Controls : ControlsBase

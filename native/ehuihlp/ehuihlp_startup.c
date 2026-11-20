@@ -33,6 +33,28 @@ WMC_API int EHGetUserName(WCHAR *buffer, int *size) {
 }
 
 // System volume: reported as full and unmuted until sound output is wired to it.
+#ifdef WMC_XP
+// XP Media Center Edition 2005 asks for a mixer object and its controls'
+// ids (the system mixer tells its window when one changes), and counts
+// volume from 0 to 65535. Every call returns an HRESULT.
+static uint32_t s_volume = 0xFFFF;
+static BOOL s_mute;
+static int s_mixer;   // (its address is the mixer handle)
+WMC_API HRESULT CreateSystemMixer(void **mixer) { *mixer = &s_mixer; return S_OK; }
+WMC_API HRESULT OpenSystemMixer(void *mixer, HWND notify, BOOL *opened) { if (opened) *opened = TRUE; return S_OK; }
+WMC_API HRESULT CloseSystemMixer(void *mixer) { return S_OK; }
+WMC_API HRESULT GetMixerID(void *mixer, intptr_t *id) { *id = 1; return S_OK; }
+WMC_API HRESULT GetMuteControlID(void *mixer, intptr_t *id) { *id = 1; return S_OK; }
+WMC_API HRESULT GetVolumeControlID(void *mixer, intptr_t *id) { *id = 2; return S_OK; }
+WMC_API HRESULT GetVolume(void *mixer, uint32_t *volume) { *volume = s_volume; return S_OK; }
+WMC_API HRESULT SetVolume(void *mixer, uint32_t volume) { s_volume = volume & 0xFFFF; return S_OK; }
+WMC_API HRESULT GetMute(void *mixer, BOOL *mute) { *mute = s_mute; return S_OK; }
+WMC_API HRESULT SetMute(void *mixer, BOOL mute) { s_mute = mute; return S_OK; }
+// The volume as one of `chunks` steps (the volume bar's 25).
+WMC_API int GetPositionForVolume(uint32_t volume, int chunks) {
+    return (int)(((uint64_t)(volume & 0xFFFF) * (uint64_t)chunks + 0x7FFF) / 0xFFFF);
+}
+#else
 static float s_volume = 1.0f;
 static BOOL s_mute;
 WMC_API void CreateSystemVolume(void) {}
@@ -41,6 +63,7 @@ WMC_API void GetVolume(float *volume) { *volume = s_volume; }
 WMC_API void SetVolume(float volume) { s_volume = volume; }
 WMC_API void GetMute(BOOL *mute) { *mute = s_mute; }
 WMC_API void SetMute(BOOL mute) { s_mute = mute; }
+#endif
 WMC_API void SetVolumeChangeCallback(void *callback) {}
 
 // "Is the MPEG-2/DVD decoder package installed?" On Windows 8 and later the

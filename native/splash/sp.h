@@ -15,6 +15,15 @@
 #include "threadq.h"
 #include "splash_protocol.h"
 
+// Protocol class names. Windows 7's and Vista's are grouped
+// ("Splash::Rendering::Visual"); XP Media Center Edition 2005's are not
+// ("Splash::Visual").
+#ifdef WMC_XP
+#define SP_CLASS(group, name) @"Splash::" name
+#else
+#define SP_CLASS(group, name) @"Splash::" group "::" name
+#endif
+
 typedef struct {
     uint32_t cbSize;
     uint32_t nMsg;

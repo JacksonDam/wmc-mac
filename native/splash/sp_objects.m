@@ -131,7 +131,7 @@ const char *sp_message_name(NSString *className, uint32_t msgid) {
         SpClassObject *broker = [SpClassObject new];
         broker.handle = _brokerClass;
         broker.context = self;
-        broker.spClassName = @"Splash::Messaging::Broker";
+        broker.spClassName = SP_CLASS("Messaging", "Broker");
         broker.impl = nil;   // handled inline in -dispatch:
         _objects[@(_brokerClass)] = broker;
     }
@@ -213,7 +213,7 @@ const char *sp_message_name(NSString *className, uint32_t msgid) {
             SpDataBuffer *buffer = [SpDataBuffer new];
             buffer.handle = info.idBuffer;
             buffer.context = self;
-            buffer.spClassName = @"Splash::Messaging::DataBuffer";
+            buffer.spClassName = SP_CLASS("Messaging", "DataBuffer");
             [self registerObject:buffer];
             target = buffer;
         }
@@ -239,7 +239,7 @@ const char *sp_message_name(NSString *className, uint32_t msgid) {
         [self brokerMessage:msg];
     } else if ([target isKindOfClass:[SpClassObject class]]) {
         SpClassObject *cls = (SpClassObject *)target;
-        if ([cls.spClassName isEqualToString:@"Splash::Messaging::Context"]) [self contextMessage:msg];
+        if ([cls.spClassName isEqualToString:SP_CLASS("Messaging", "Context")]) [self contextMessage:msg];
         else [cls.impl spStaticMessage:msg context:self];
     } else {
         [target spMessage:msg];
@@ -336,7 +336,7 @@ const char *sp_message_name(NSString *className, uint32_t msgid) {
 @end
 
 __attribute__((constructor)) static void register_messaging_classes(void) {
-    sp_register_class(@"Splash::Messaging::DataBuffer", [SpDataBuffer class]);
-    sp_register_class(@"Splash::Messaging::Context", [SpObject class]);
-    sp_register_class(@"Splash::Messaging::ContextRelay", [SpGenericObject class]);
+    sp_register_class(SP_CLASS("Messaging", "DataBuffer"), [SpDataBuffer class]);
+    sp_register_class(SP_CLASS("Messaging", "Context"), [SpObject class]);
+    sp_register_class(SP_CLASS("Messaging", "ContextRelay"), [SpGenericObject class]);
 }

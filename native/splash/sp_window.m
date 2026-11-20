@@ -53,6 +53,46 @@ _Static_assert(sizeof(SpMonitorInfo) == 272, "monitor info layout");
 
 #define SP_FORMAT_RGB32 2099336u
 
+#ifdef WMC_XP
+// XP Media Center Edition 2005's monitor record: a television's native and
+// logical sizes where Windows 7's has a display mode list.
+typedef struct __attribute__((packed)) {
+    uint32_t cbSize;
+    int32_t nMsg;
+    uint32_t idObjectSubject;
+    uint32_t idDisplay;
+    uint32_t fIsTV;
+    int32_t nativeTvWidth, nativeTvHeight, logicalTvWidth, logicalTvHeight;
+    uint32_t uNativeTVRefresh;
+    uint32_t cbMiSize;
+    int32_t rcMon[4];
+    int32_t rcWork[4];
+    uint32_t dwFlags;               // 1 primary
+    uint16_t szDevice[32];
+} SpXpMonitorInfo;
+_Static_assert(sizeof(SpXpMonitorInfo) == 144, "XP monitor info layout");
+
+// XP's mouse record: the window message's wParam and lParam (the wheel is
+// wParam's high word), and no point in the natural visual's coordinates.
+typedef struct __attribute__((packed)) {
+    uint32_t cbSize;
+    int32_t nMsg;
+    uint32_t idObjectSubject;
+    uint32_t ownerCookie;
+    uint32_t ownerMessage;          // 4: mouse
+    uint32_t uMessage;
+    int64_t wParam;
+    int64_t lParam;
+    uint32_t dwSubject;
+    uint32_t dwNatural;
+    int32_t ptPositionX, ptPositionY;
+    int32_t ptPhysicalX, ptPhysicalY;
+    uint32_t nModifiers;
+    uint32_t bButton;
+} SpXpMouseInput;
+_Static_assert(sizeof(SpXpMouseInput) == 72, "XP mouse input layout");
+#endif
+
 // Input reaches the framework as a blob inside InputCallback.OnInput. These
 // are the framework's own layouts for the two kinds used here.
 typedef struct __attribute__((packed)) {
@@ -141,6 +181,29 @@ static void copy_utf16(uint16_t *dst, size_t cap, NSString *s) {
         if (refresh <= 0) refresh = 60;
         if (mode) CGDisplayModeRelease(mode);
 
+#ifdef WMC_XP
+        struct {
+            struct Sp_LocalDesktopManagerCallback_OnMonitorInfo head;
+            SpXpMonitorInfo info;
+        } __attribute__((packed)) cb;
+        memset(&cb, 0, sizeof(cb));
+        cb.head.size = sizeof(cb);
+        cb.head.msgid = SpMsg_DesktopManagerCallback_OnMonitorInfo;
+        cb.head.idObjectSubject.value = self.cbObject;
+        cb.head.target.value = self.handle;
+        cb.head.info.value = (uint32_t)sizeof(cb.head) | ((uint32_t)sizeof(cb.info) << 16);
+        cb.info.cbSize = sizeof(cb.info);
+        cb.info.idDisplay = displays[i];
+        cb.info.cbMiSize = 104;   // sizeof(MONITORINFOEXW)
+        cb.info.rcMon[0] = cb.info.rcWork[0] = (int32_t)bounds.origin.x;
+        cb.info.rcMon[1] = cb.info.rcWork[1] = (int32_t)bounds.origin.y;
+        cb.info.rcMon[2] = cb.info.rcWork[2] = (int32_t)(bounds.origin.x + bounds.size.width);
+        cb.info.rcMon[3] = cb.info.rcWork[3] = (int32_t)(bounds.origin.y + bounds.size.height);
+        cb.info.dwFlags = displays[i] == main ? 1 : 0;
+        copy_utf16(cb.info.szDevice, 32, [NSString stringWithFormat:@"\\\\.\\DISPLAY%u", i + 1]);
+        (void)refresh;
+        [self.context sendCallback:&cb toContext:self.cbContext];
+#else
         struct {
             struct Sp_LocalDesktopManagerCallback_OnMonitorInfo head;
             SpMonitorInfo info;
@@ -181,6 +244,7 @@ static void copy_utf16(uint16_t *dst, size_t cap, NSString *s) {
         dm.fSupported = 1;
         [self.context sendCallback:&dm toContext:self.cbContext];
         [self simple:SpMsg_DesktopManagerCallback_OnEndDisplayModes];
+#endif
     }
     [self simple:SpMsg_DesktopManagerCallback_OnEndEnumMonitorInfo];
 }
@@ -194,6 +258,26 @@ static void copy_utf16(uint16_t *dst, size_t cap, NSString *s) {
             [self spUnhandled:msg];
     }
 }
+
+#ifdef WMC_XP
+WINBOOL wmc_play_sound(const WCHAR *name, HMODULE module, DWORD flags);   // winmm_sound.m
+
+// XP Media Center Edition plays its interface sounds through the class
+// (in step with drawing): a resource name, its module, PlaySound's flags.
++ (void)spStaticMessage:(const SpMessage *)msg context:(SpRenderContext *)context {
+    if (msg->nMsg == SpMsg_DesktopManager_PlaySound) {
+        const struct Sp_RemoteDesktopManager_PlaySound *m = (const void *)msg;
+        NSString *name = sp_blob_string(msg, m->sound.value);
+        NSUInteger n = name.length;
+        WCHAR *w = calloc(n + 1, sizeof(WCHAR));
+        [name getCharacters:w range:NSMakeRange(0, n)];
+        wmc_play_sound(n ? w : NULL, (HMODULE)(intptr_t)m->hinstance.h, m->flags);
+        free(w);
+        return;
+    }
+    [super spStaticMessage:msg context:context];
+}
+#endif
 
 @end
 
@@ -515,16 +599,28 @@ static uint32_t modifiers_for_flags(NSEventModifierFlags flags) {
     return m;
 }
 
+// Windows 7 and Vista deliver input through an InputRouter; XP Media Center
+// Edition through the form window's own callback.
+#ifdef WMC_XP
+#define INPUT_HEAD struct Sp_LocalFormWindowCallback_OnInput
+#define INPUT_MSG SpMsg_FormWindowCallback_OnInput
+#define INPUT_TARGET self
+#else
+#define INPUT_HEAD struct Sp_LocalInputCallback_OnInput
+#define INPUT_MSG SpMsg_InputCallback_OnInput
+#define INPUT_TARGET _inputRouter
+#endif
+
 - (void)sendKey:(int)vk message:(uint32_t)message repeat:(int)repeat modifiers:(uint32_t)modifiers {
-    SpInputRouter *router = _inputRouter;
+    SpObject *router = INPUT_TARGET;
     if (!router.cbObject) return;
     struct {
-        struct Sp_LocalInputCallback_OnInput head;
+        INPUT_HEAD head;
         SpKeyboardInput key;
     } __attribute__((packed)) cb;
     memset(&cb, 0, sizeof(cb));
     cb.head.size = sizeof(cb);
-    cb.head.msgid = SpMsg_InputCallback_OnInput;
+    cb.head.msgid = INPUT_MSG;
     cb.head.idObjectSubject.value = router.cbObject;
     cb.head.target.value = router.handle;
     cb.head.inputInfo.value = (uint32_t)sizeof(cb.head) | ((uint32_t)sizeof(cb.key) << 16);
@@ -583,15 +679,45 @@ BOOL sp_hit_test(SpWindow *window, float x, float y, float width, float height, 
            button:(uint32_t)button
         modifiers:(uint32_t)modifiers
             wheel:(int)wheel {
-    SpInputRouter *router = _inputRouter;
+    SpObject *router = INPUT_TARGET;
     if (!router.cbObject) return;
+#ifdef WMC_XP
     struct {
-        struct Sp_LocalInputCallback_OnInput head;
+        INPUT_HEAD head;
+        SpXpMouseInput mouse;
+    } __attribute__((packed)) cb;
+    memset(&cb, 0, sizeof(cb));
+    cb.head.size = sizeof(cb);
+    cb.head.msgid = INPUT_MSG;
+    cb.head.idObjectSubject.value = router.cbObject;
+    cb.head.target.value = router.handle;
+    cb.head.inputInfo.value = (uint32_t)sizeof(cb.head) | ((uint32_t)sizeof(cb.mouse) << 16);
+    cb.mouse.cbSize = sizeof(cb.mouse);
+    cb.mouse.ownerMessage = 4;
+    cb.mouse.uMessage = message;
+    cb.mouse.wParam = (int64_t)(int32_t)((uint32_t)(uint16_t)(int16_t)wheel << 16);
+    cb.mouse.lParam = (int64_t)(((uint32_t)(uint16_t)(int16_t)y << 16) | (uint16_t)(int16_t)x);
+    cb.mouse.ptPhysicalX = (int32_t)x;
+    cb.mouse.ptPhysicalY = (int32_t)y;
+    cb.mouse.nModifiers = modifiers;
+    cb.mouse.bButton = button;
+    if (message != SpWmMouseLeave) {
+        float sp[2] = { 0, 0 }, np[2] = { 0, 0 };
+        uint32_t subject = 0, natural = 0;
+        sp_hit_test(self, x, y, _clientW, _clientH, _hitTraverse, _hitHit, _hitResult, &subject, sp, &natural, np);
+        cb.mouse.dwSubject = subject;
+        cb.mouse.ptPositionX = (int32_t)sp[0];
+        cb.mouse.ptPositionY = (int32_t)sp[1];
+        cb.mouse.dwNatural = natural;
+    }
+#else
+    struct {
+        INPUT_HEAD head;
         SpMouseInput mouse;
     } __attribute__((packed)) cb;
     memset(&cb, 0, sizeof(cb));
     cb.head.size = sizeof(cb);
-    cb.head.msgid = SpMsg_InputCallback_OnInput;
+    cb.head.msgid = INPUT_MSG;
     cb.head.idObjectSubject.value = router.cbObject;
     cb.head.target.value = router.handle;
     cb.head.inputInfo.value = (uint32_t)sizeof(cb.head) | ((uint32_t)sizeof(cb.mouse) << 16);
@@ -614,6 +740,7 @@ BOOL sp_hit_test(SpWindow *window, float x, float y, float width, float height, 
         cb.mouse.ptNaturalX = (int32_t)np[0];
         cb.mouse.ptNaturalY = (int32_t)np[1];
     }
+#endif
     if (message != SpWmMouseMove) {
         WLOG("input", "mouse message %#x at %g,%g subject %#x natural %#x", message, x, y, cb.mouse.dwSubject,
              cb.mouse.dwNatural);
@@ -1021,17 +1148,30 @@ static NSArray<NSArray<NSString *> *> *script_commands(NSString *script) {
             break;
         case SpMsg_FormWindow_SetHitMasks: {
             const struct Sp_RemoteFormWindow_SetHitMasks *m = (const void *)msg;
+#ifdef WMC_XP
+            // XP: the first mask is what to look inside, the second what can
+            // be hit (2) and what receives the event (4).
+            _hitTraverse = m->uMask1;
+            _hitHit = m->uMask2 & ~4u;
+            _hitResult = m->uMask2 & 4u;
+#else
             _hitTraverse = m->uMaskTraverse;
             _hitHit = m->uMaskHit;
             _hitResult = m->uMaskResult;
+#endif
             break;
         }
         case SpMsg_FormWindow_CreateRootContainer:
 #ifdef SP_HAS_MSG_FormWindow_SetIcon
         case SpMsg_FormWindow_SetIcon:
 #endif
+#ifdef SP_HAS_MSG_FormWindow_SetMaxResizeWidth
         case SpMsg_FormWindow_SetMaxResizeWidth:
         case SpMsg_FormWindow_SetMinResizeWidth:
+#endif
+#ifdef SP_HAS_MSG_FormWindow_SetDynamicSizeHint
+        case SpMsg_FormWindow_SetDynamicSizeHint:
+#endif
         case SpMsg_FormWindow_EnableShellShutdownHook:
         case SpMsg_FormWindow_UpdateForegroundLockState:
         case SpMsg_FormWindow_SetAppNotifyWindow:
@@ -1051,6 +1191,7 @@ static NSArray<NSArray<NSString *> *> *script_commands(NSString *script) {
 
 @end
 
+#ifndef WMC_XP
 // ------------------------------------------------------------------ InputRouter
 
 @implementation SpInputRouter
@@ -1069,9 +1210,15 @@ static NSArray<NSArray<NSString *> *> *script_commands(NSString *script) {
     }
 }
 @end
+#endif
 
 __attribute__((constructor)) static void register_desktop_classes(void) {
+#ifdef WMC_XP
+    sp_register_class(@"Splash::DesktopManager", [SpDesktopManager class]);
+    sp_register_class(@"Splash::FormWindow", [SpFormWindow class]);
+#else
     sp_register_class(@"Splash::Desktop::DesktopManager", [SpDesktopManager class]);
     sp_register_class(@"Splash::Desktop::FormWindow", [SpFormWindow class]);
     sp_register_class(@"Splash::Desktop::InputRouter", [SpInputRouter class]);
+#endif
 }

@@ -62,10 +62,13 @@ static class Bases
             };
             // A|B: the first of these that the interop assembly has (an older
             // Media Center may only have the interface a newer one extends).
+            // A trailing | (A|) makes it optional: left out if it has neither.
             foreach (string choice in parts[1].Split('+'))
             {
-                var t = choice.Split('|').Select(iname => interop.MainModule.Types.FirstOrDefault(x => x.Name == iname))
+                var t = choice.Split('|').Where(iname => iname.Length > 0)
+                              .Select(iname => interop.MainModule.Types.FirstOrDefault(x => x.Name == iname))
                               .FirstOrDefault(x => x != null);
+                if (t == null && choice.EndsWith("|")) continue;
                 if (t == null) { Console.Error.WriteLine("bases: no interface " + choice); return 1; }
                 add(t);
             }

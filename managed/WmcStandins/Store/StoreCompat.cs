@@ -2,6 +2,9 @@
 // (see managed/redirects.txt, "The object store"). Windows 7's store and
 // Vista's (an older interface: VistaStore.cs) open differently; the rest is
 // shared where both make the call.
+// Windows 7 and Vista: XP Media Center Edition's counterparts differ.
+#if !XP
+
 using System;
 using System.Collections.Generic;
 
@@ -61,13 +64,6 @@ namespace WmcStandins
             {
                 return WaitHelper(handles, waitAll, milliseconds);
             }
-        }
-
-        // Not in Mono: the last Win32 error as an HRESULT.
-        public static int Marshal_GetHRForLastWin32Error()
-        {
-            int e = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-            return e == 0 ? 0 : unchecked((int)(0x80070000u | (uint)(e & 0xFFFF)));
         }
 
 #if !VISTA
@@ -147,3 +143,5 @@ namespace WmcStandins
 #endif
     }
 }
+
+#endif

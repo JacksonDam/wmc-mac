@@ -154,6 +154,29 @@ WMC_API void EhReleaseBitmapBuffer(void *data) {
     free(data);
 }
 
+#ifdef WMC_XP
+// XP Media Center Edition's video thumbnails: a frame as 24-bit rows of the
+// same width, bottom row first (it reads them with a negative stride), in
+// memory it frees as CoTaskMem (malloc'd: Mono's CoTaskMem is the C heap).
+// *cx and *cy are the box going in and the picture's size coming out.
+WMC_API int32_t GetVideoThumbnail(void *abort, const WCHAR *file, int *cx, int *cy, void **data, uint32_t notifyWindow) {
+    int bytes = 0;
+    if (thumbnail(file, cx, cy, NULL, NULL, &bytes, data) != S_OK || !*data) {
+        if (data) *data = NULL;
+        return E_FAIL;
+    }
+    int stride = (*cx * 3 + 3) & ~3;
+    uint8_t *rows = *data, *tmp = malloc((size_t)stride);
+    for (int top = 0, bottom = *cy - 1; top < bottom; top++, bottom--) {
+        memcpy(tmp, rows + (size_t)top * stride, (size_t)stride);
+        memcpy(rows + (size_t)top * stride, rows + (size_t)bottom * stride, (size_t)stride);
+        memcpy(rows + (size_t)bottom * stride, tmp, (size_t)stride);
+    }
+    free(tmp);
+    return S_OK;
+}
+#endif
+
 // 0: not protected. Nothing here can be.
 WMC_API int EhGetDRMStatusInfo(const WCHAR *file) {
     return 0;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Unpack Windows Media Center from a Windows 7 or Vista installation disc
-image (.iso).
+image, or from Windows XP Media Center Edition 2005's second CD (.iso).
 
     extract_iso.py <windows.iso> <output folder>
 
@@ -19,6 +19,11 @@ that has it, and writes:
 The disc is mounted read-only and hidden if macOS allows it, so the 3 GB
 install.wim is read in place; otherwise it is copied out first (the output
 folder's disk then needs about 3.5 GB free while this runs).
+
+XP Media Center Edition 2005 keeps Media Center in one cabinet on CD 2
+(CMPNENTS/MEDIACTR/I386/MEDIACTR.CAB), which becomes the ehome folder; its
+registry entries are its COM servers' own registration scripts (tools/rgs.py)
+and a few written out here.
 """
 import glob
 import os
@@ -33,6 +38,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import hive  # noqa: E402
+import rgs  # noqa: E402
 
 
 def step(text):
@@ -135,6 +141,50 @@ def find_case(folder, *parts):
     return path
 
 
+XP_CAB = ("CMPNENTS", "MEDIACTR", "I386", "MEDIACTR.CAB")
+
+# Windows XP Media Center Edition 2005 registered its parts by running them
+# (self-registration, regasm) rather than from a list on the disc. Its COM
+# servers' registry scripts are read from them (tools/rgs.py); the rest it
+# needs to start is written out here.
+XP_REGISTRY = r"""Windows Registry Editor Version 5.00
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Media Center]
+"Ident"="5.1"
+"""
+
+
+def extract_xp(iso, point, out, scratch):
+    """Windows XP Media Center Edition 2005, CD 2: Media Center is one
+    cabinet, MEDIACTR.CAB, which becomes the ehome folder as it is."""
+    cab = find_case(point, *XP_CAB) if point else None
+    if not cab:
+        sevenzip(["x", "-y", "-o" + scratch, iso, "/".join(XP_CAB)])
+        cab = find_case(scratch, *XP_CAB)
+    name = "Windows XP Media Center Edition 2005"
+    step("Unpacking Windows Media Center from %s" % name)
+    tree = os.path.join(out, "tree")
+    if os.path.isdir(tree):
+        shutil.rmtree(tree)
+    ehome = os.path.join(tree, "ehome")
+    os.makedirs(ehome)
+    sevenzip(["x", "-y", "-o" + ehome, cab])
+    if not find_case(ehome, "ehshell.exe"):
+        fail("Media Center's folder was not found in %s" % name)
+    step("Reading Media Center's registry entries")
+    lines = XP_REGISTRY.rstrip("\n").split("\n")
+    for n in sorted(os.listdir(ehome), key=str.lower):
+        if n.lower().endswith((".dll", ".exe", ".ax", ".ocx")):
+            lines += rgs.reg_lines(rgs.server_keys(os.path.join(ehome, n), "C:\\WINDOWS\\eHome\\" + n))
+    with open(os.path.join(tree, "registry.reg"), "w", encoding="utf-16") as f:
+        f.write("\r\n".join(lines) + "\r\n")
+    langs = "en-US" if find_case(ehome, "ehres.dll") else "?"
+    with open(os.path.join(out, "info.txt"), "w") as f:
+        f.write("source\t%s\nedition\t%s\narchitecture\tx86\nlanguage\t%s\n" % (os.path.basename(iso), name, langs))
+    files = sum(len(fs) for _d, _s, fs in os.walk(ehome))
+    print("%d files from %s (x86, %s)" % (files, name, langs))
+
+
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
@@ -150,13 +200,18 @@ def main():
         wim = None
         if point:
             wim = find_case(point, "sources", "install.wim")
+            if not wim and find_case(point, *XP_CAB):
+                return extract_xp(iso, point, out, scratch)
+        elif re.search(r"cmpnents/mediactr/i386/mediactr\.cab$", sevenzip(["l", "-ba", iso, "CMPNENTS/*"]).lower(), re.M):
+            return extract_xp(iso, None, out, scratch)
         if not wim:
             listing = sevenzip(["l", "-ba", iso, "sources/*"]).lower()
             if not re.search(r"sources/install\.wim$", listing, re.M):
                 if re.search(r"\.(esd|swm)$", listing, re.M):
                     fail("this disc keeps Windows in a compressed or split image (install.esd/.swm); "
                          "a Windows 7 or Vista disc with sources/install.wim is needed")
-                fail("no sources/install.wim: this does not look like a Windows 7 or Vista installation disc")
+                fail("no sources/install.wim: this does not look like a Windows 7 or Vista installation disc "
+                     "(or Windows XP Media Center Edition 2005's CD 2)")
             if point:
                 unmount(point)
                 point = None

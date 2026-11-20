@@ -1,4 +1,7 @@
 // Pictures decoded by the render engine (see managed/redirects.txt).
+// Windows 7 and Vista: XP Media Center Edition's counterparts differ.
+#if !XP
+
 using Microsoft.MediaCenter.Interop;
 using Microsoft.MediaCenter.UI;
 
@@ -28,3 +31,5 @@ namespace WmcStandins
         }
     }
 }
+
+#endif

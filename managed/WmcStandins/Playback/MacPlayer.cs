@@ -8,8 +8,8 @@
 //   Initialize -> (Closed) -> Open -> (Open) -> Build -> (Built) -> Play
 // each to be announced through StatusChanged after the call has returned,
 // so every change of state is raised as a separate piece of queued work.
-// Windows 7 only: Vista's Media Center has no Microsoft.MediaCenter.Playback.
-#if !VISTA
+// Windows 7 only (not Vista or XP): Vista's Media Center has no Microsoft.MediaCenter.Playback.
+#if !VISTA && !XP
 
 using System;
 using System.Collections.Generic;
