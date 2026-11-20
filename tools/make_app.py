@@ -5,9 +5,10 @@
                 [--name NAME] [--no-check]
 
 The disc image is Windows 7, Windows Vista, or Windows XP Media Center
-Edition 2005 (its second CD). The app is called "Windows Media Center",
-"Windows Media Center (Vista)" or "Windows Media Center (XP)", so that
-they can be kept side by side (each has its own settings).
+Edition 2005 or 2002 (its second CD). The app is called "Windows Media
+Center", "Windows Media Center (Vista)", "Windows Media Center (XP)" or
+"Windows Media Center (XP 2002)", so that they can be kept side by side
+(each has its own settings).
 
 --output     where the app goes (default: /Applications if you can write
              there, else ~/Applications). An app of the same name is replaced.
@@ -35,7 +36,7 @@ TOOLS = os.path.join(ROOT, "tools")
 sys.path.insert(0, TOOLS)
 import peinfo  # noqa: E402
 
-BUNDLE_ID = "local.wmc-mac.media-center"           # Vista's: + "-vista", XP's: + "-xp"
+BUNDLE_ID = "local.wmc-mac.media-center"           # Vista's: + "-vista", XP's: + "-xp" (2002's "-xp2002")
 MACOS_MIN = (11, 0)     # the oldest macOS the app runs on (Big Sur)
 
 
@@ -47,11 +48,12 @@ def shell_file(ehome):
 
 
 def release(ehome):
-    """ "xp" (version 5.x, no ehshell.dll), "vista" (6.0) or "7" (6.1), as tools/build.py tells them."""
+    """ "xp2002" (5.1.2600, no ehshell.dll), "xp" (other 5.x), "vista" (6.0) or
+    "7" (6.1), as tools/build.py tells them."""
     shell = shell_file(ehome)
     version = peinfo.version(shell)
     if shell.lower().endswith(".exe") and version.startswith("5."):
-        return "xp"
+        return "xp2002" if version.startswith("5.1.2600.") else "xp"
     return "vista" if version.startswith("6.0.") else "7"
 
 
@@ -60,6 +62,7 @@ RELEASES = {
     "7": ("Windows Media Center", "", "build"),
     "vista": ("Windows Media Center (Vista)", "-vista", "build-vista"),
     "xp": ("Windows Media Center (XP)", "-xp", "build-xp"),
+    "xp2002": ("Windows Media Center (XP 2002)", "-xp2002", "build-xp2002"),
 }
 
 
@@ -174,7 +177,7 @@ def unpack(installer, work, toolchain):
         shutil.rmtree(source)
     env = dict(os.environ, WMC_TOOLCHAIN=toolchain)
     if not installer.lower().endswith(".iso"):
-        fail("expected a Windows 7, Windows Vista or Windows XP Media Center Edition 2005 disc image (.iso)")
+        fail("expected a Windows 7, Windows Vista or Windows XP Media Center Edition disc image (.iso)")
     run([sys.executable, "-I", os.path.join(TOOLS, "extract_iso.py"), installer, source], env=env)
     with open(stamp_file, "w") as f:
         f.write(stamp)
@@ -312,7 +315,7 @@ def make_icon(ehome, out_icns, scratch):
     Edition keeps its green button in ehres.dll)."""
     png = os.path.join(scratch, "icon.png")
     names = {n.lower(): n for n in os.listdir(ehome)}
-    holder = "ehres.dll" if release(ehome) == "xp" else "ehshell.dll"
+    holder = "ehres.dll" if release(ehome) in ("xp", "xp2002") else "ehshell.dll"
     try:
         peinfo.icon_png(os.path.join(ehome, names.get(holder, holder)), png)
     except (OSError, ValueError, KeyError, TypeError):
@@ -424,7 +427,7 @@ def check(app, work):
             os.remove(p)
     name = os.path.splitext(os.path.basename(app))[0]
     # Without the launch animation, and a picture as soon as the start menu
-    # has settled (native/splash/sp_window.m, WMC_STEPS).
+    # has settled (WMC_STEPS: native/splash/sp_window.m, native/duser/duser_agent.m).
     env = dict(os.environ, WMC_HEADLESS="1", WMC_MUTE="1", WMC_APP_DATA=data,
                WMC_STEPS="ready 60 0.5; snap %s; exit" % shot)
     log = os.path.join(work, "check.log")

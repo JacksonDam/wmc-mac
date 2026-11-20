@@ -14,7 +14,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 #if XP
 using eHome.UI;               // XP Media Center Edition's UI framework (EhCM.dll)
-#else
+#elif !XP2002
 using Microsoft.MediaCenter.UI;
 #endif
 using ServiceBus.UIFramework;
@@ -54,6 +54,7 @@ namespace WmcStandins
             {
                 Console.Error.WriteLine("host: guarded again: " + inner.GetType().FullName + ": " + inner.Message + " " + first);
             }
+#if !XP2002
             // A page that fails while Media Center is opening it is left
             // half made. The notifications to it are guarded one by one, so
             // the navigation itself completes; afterwards step back off it.
@@ -63,6 +64,7 @@ namespace WmcStandins
                 s_leavePending = true;
                 Application.DeferredInvoke(delegate { LeaveBrokenPage(); });
             }
+#endif
         }
 
         static string FirstFrame(Exception e)
@@ -72,6 +74,7 @@ namespace WmcStandins
             return (end < 0 ? trace : trace.Substring(0, end)).Trim();
         }
 
+#if !XP2002
         static void LeaveBrokenPage()
         {
             s_leavePending = false;
@@ -100,5 +103,6 @@ namespace WmcStandins
             }
             finally { s_recovering = false; }
         }
+#endif
     }
 }

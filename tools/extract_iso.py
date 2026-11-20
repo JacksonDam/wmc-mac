@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unpack Windows Media Center from a Windows 7 or Vista installation disc
-image, or from Windows XP Media Center Edition 2005's second CD (.iso).
+image, or from the second CD of Windows XP Media Center Edition 2005 or
+2002 (.iso).
 
     extract_iso.py <windows.iso> <output folder>
 
@@ -20,10 +21,10 @@ The disc is mounted read-only and hidden if macOS allows it, so the 3 GB
 install.wim is read in place; otherwise it is copied out first (the output
 folder's disk then needs about 3.5 GB free while this runs).
 
-XP Media Center Edition 2005 keeps Media Center in one cabinet on CD 2
-(CMPNENTS/MEDIACTR/I386/MEDIACTR.CAB), which becomes the ehome folder; its
-registry entries are its COM servers' own registration scripts (tools/rgs.py)
-and a few written out here.
+XP Media Center Edition (2005, and 2002 before it) keeps Media Center in one
+cabinet on CD 2 (CMPNENTS/MEDIACTR/I386/MEDIACTR.CAB), which becomes the
+ehome folder; its registry entries are its COM servers' own registration
+scripts (tools/rgs.py) and a few written out here.
 """
 import glob
 import os
@@ -38,6 +39,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import hive  # noqa: E402
+import peinfo  # noqa: E402
 import rgs  # noqa: E402
 
 
@@ -143,7 +145,7 @@ def find_case(folder, *parts):
 
 XP_CAB = ("CMPNENTS", "MEDIACTR", "I386", "MEDIACTR.CAB")
 
-# Windows XP Media Center Edition 2005 registered its parts by running them
+# Windows XP Media Center Edition registered its parts by running them
 # (self-registration, regasm) rather than from a list on the disc. Its COM
 # servers' registry scripts are read from them (tools/rgs.py); the rest it
 # needs to start is written out here.
@@ -155,22 +157,25 @@ XP_REGISTRY = r"""Windows Registry Editor Version 5.00
 
 
 def extract_xp(iso, point, out, scratch):
-    """Windows XP Media Center Edition 2005, CD 2: Media Center is one
-    cabinet, MEDIACTR.CAB, which becomes the ehome folder as it is."""
+    """Windows XP Media Center Edition, CD 2: Media Center is one cabinet,
+    MEDIACTR.CAB, which becomes the ehome folder as it is. Which edition it
+    is (2005 or 2002) is in its shell's version: 5.1.2700 or 5.1.2600."""
     cab = find_case(point, *XP_CAB) if point else None
     if not cab:
         sevenzip(["x", "-y", "-o" + scratch, iso, "/".join(XP_CAB)])
         cab = find_case(scratch, *XP_CAB)
-    name = "Windows XP Media Center Edition 2005"
-    step("Unpacking Windows Media Center from %s" % name)
+    step("Unpacking Windows Media Center from Windows XP Media Center Edition")
     tree = os.path.join(out, "tree")
     if os.path.isdir(tree):
         shutil.rmtree(tree)
     ehome = os.path.join(tree, "ehome")
     os.makedirs(ehome)
     sevenzip(["x", "-y", "-o" + ehome, cab])
-    if not find_case(ehome, "ehshell.exe"):
-        fail("Media Center's folder was not found in %s" % name)
+    shell = find_case(ehome, "ehshell.exe")
+    if not shell:
+        fail("Media Center's folder was not found in Windows XP Media Center Edition's CD 2")
+    version = peinfo.version(shell) or ""
+    name = "Windows XP Media Center Edition " + ("2002" if version.startswith("5.1.2600.") else "2005")
     step("Reading Media Center's registry entries")
     lines = XP_REGISTRY.rstrip("\n").split("\n")
     for n in sorted(os.listdir(ehome), key=str.lower):
@@ -211,7 +216,7 @@ def main():
                     fail("this disc keeps Windows in a compressed or split image (install.esd/.swm); "
                          "a Windows 7 or Vista disc with sources/install.wim is needed")
                 fail("no sources/install.wim: this does not look like a Windows 7 or Vista installation disc "
-                     "(or Windows XP Media Center Edition 2005's CD 2)")
+                     "(or Windows XP Media Center Edition's CD 2)")
             if point:
                 unmount(point)
                 point = None

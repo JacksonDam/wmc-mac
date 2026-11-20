@@ -10,8 +10,11 @@
 #   <declaring type>::<method>  =>  @default      (at each call: do nothing, return null/0/false)
 #   <declaring type>::<method>  =>  @stub         (replace the method's own body the same way;
 #                                                  needed for virtual and reflection calls)
+#   <type>::castclass           =>  @cast <type>  (casts to the type are to the other one instead,
+#                                                  of the same assembly: a COM class's interface)
 # Blank lines and lines starting with # are ignored. A rule starting with
-# [xp], [vista] or [7] applies only when patching that version of Media Center.
+# [xp2002], [xp], [vista] or [7] applies only when patching that version of
+# Media Center ([xp,xp2002]: either).
 
 System.Diagnostics.Process::set_PriorityClass => Process_set_PriorityClass
 
@@ -69,8 +72,9 @@ Microsoft.MediaCenter.Guide.EPG::get_MasterLineup => @stub
 # Every piece of queued work on the UI thread runs through this call. Guarded,
 # so that a failure in one page does not end Media Center (WmcStandins/Guard.cs).
 Microsoft.MediaCenter.Queues.QueueItem::Dispatch => @guard
-# (Vista's is in another namespace.)
+# (Vista's is in another namespace, XP Media Center Edition 2002's in another again.)
 Microsoft.MediaCenter.UI.QueueItem::Dispatch => @guard
+[xp2002] eHome.ComponentModel.QueueItem::Dispatch => @guard
 # Shutting down, Media Center walks a list of task schedulers that other
 # threads may still be changing (seen on Vista: an empty slot, NullReference).
 ServiceBus.UIFramework.EhTaskScheduler::KillSchedulers => @guard
@@ -152,9 +156,39 @@ Microsoft.MediaCenter.Playback.PlayerTable::FindPlayerType => Playback_FindPlaye
 # The exceptions it catches go to a log its retail build never opens: to ours instead.
 [xp] eHome.Debug.eDebug::DumpExceptionToLog => @body Xp_DebugException
 # libgdiplus aborts on an empty DrawImage, which GDI+ does nothing for (WmcStandins/XpDrawing.cs).
-[xp] System.Drawing.Graphics::DrawImage => Graphics_DrawImage
+[xp,xp2002] System.Drawing.Graphics::DrawImage => Graphics_DrawImage
 # Album covers: from Media Center's art cache, not the song's folder (WmcStandins/XpMusic.cs).
 [xp] EHMedia.EHMedia2::GetGuidArtFileName => @body Xp_AlbumArtFile
+# XP Media Center Edition 2002's guide starts by listening to its download
+# service (a COM server, ehepgdat): there is none, so it only loads its
+# guide file, finds none, and is an empty guide (WmcStandins/Xp2002Shell.cs).
+[xp2002] Microsoft.Ehome.Epg.Guide::Initialize => @body Xp2002_GuideInitialize
+# (An empty guide's channels come from Windows' TV tuning spaces: none here.)
+[xp2002] Microsoft.Ehome.Epg.DefaultChannels::get_ChannelLineup => @body Xp2002_NoChannels
+# What its engine reports (animations ended, input, the window) is handled
+# in callbacks from native code: guarded, so a page that fails on one does
+# not end Media Center (WmcStandins/Guard.cs).
+[xp2002] Fast.Remote.IRemoteMessageCallback::OnCallbackMessage => @guard
+# It sets the priority of threads that may already have finished, on which
+# Mono aborts the process (pthread_getschedparam fails); a priority is only
+# a hint, and is left as it is.
+[xp2002] System.Threading.Thread::set_Priority => Thread_set_Priority
+# Its Windows Media Player (music, and the library) is made by ehuihlp.dll as
+# an ActiveX control, and cast to the COM class: the stand-in
+# (WmcStandins/Wmp) is the class's interface instead.
+[xp2002] Fast.Windows.NativeMethods.UIHelper::CreateOcxAndClientSite => Xp2002_CreatePlayer
+[xp2002] ehiwmp.WMPOCXClass::castclass => @cast ehiwmp.WMPOCX
+# Its pictures go to the engine as GDI bitmaps made by System.Drawing, which
+# under Mono are libgdiplus's own (WmcStandins/Xp2002Drawing.cs).
+[xp2002] System.Drawing.Bitmap::GetHbitmap => Bitmap_GetHbitmap
+[xp2002] System.Drawing.Image::FromHbitmap => Image_FromHbitmap
+# Its video files play through a COM player (WmcStandins/Xp2002Video.cs).
+[xp2002] ehiPlay.FilePlayerClass::.ctor => Xp2002_NewFilePlayer
+# It has no recording service here either, which it would report as missing
+# files whenever a video page opens: nothing to tell, and the recordings'
+# events are an empty list of tuners (WmcStandins/Xp2002Video.cs).
+[xp2002] MediaCenter.Video.RecordHelper::NotifyUserOfRecorderFailure => @body Xp2002_RecorderMissing
+[xp2002] ehiProxy.RecordingEventsMediatorClass::.ctor => Xp2002_NoRecorder
 
 # The playback code's diagnostic log goes to the "trace" log channel.
 Microsoft.MediaCenter.Playback.Log::TraceError => @body PlaybackLog

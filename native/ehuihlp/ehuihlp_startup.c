@@ -8,6 +8,10 @@ WMC_API void SetCheckPointMark(int mark) {}
 
 WMC_API BOOL EHIsUserAGuest(void) { return FALSE; }
 
+// XP Media Center Edition 2002 warns at every start when the user is not an
+// administrator (on XP they usually were). The Mac user is the owner here.
+WMC_API BOOL EHIsUserAnAdmin(void) { return TRUE; }
+
 // On Windows this reads the system's licence policy: does this copy of
 // Windows include Media Center? (Zero makes Media Center refuse to start.)
 // Media Center here comes from a Windows 7 edition that includes it, obtained
@@ -33,7 +37,7 @@ WMC_API int EHGetUserName(WCHAR *buffer, int *size) {
 }
 
 // System volume: reported as full and unmuted until sound output is wired to it.
-#ifdef WMC_XP
+#ifdef WMC_XP_ANY
 // XP Media Center Edition 2005 asks for a mixer object and its controls'
 // ids (the system mixer tells its window when one changes), and counts
 // volume from 0 to 65535. Every call returns an HRESULT.

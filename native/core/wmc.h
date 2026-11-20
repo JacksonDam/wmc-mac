@@ -5,6 +5,12 @@
 // (EhUI.dll, ehuihlp.dll, ...). Every function here is written from the
 // calling side's declaration of it; none of it is translated Windows code.
 #pragma once
+
+// Either XP Media Center Edition: 2005 (WMC_XP, the Splash engine) or 2002
+// (WMC_XP2002, its own engine). Their Windows stand-ins are the same.
+#if defined(WMC_XP) || defined(WMC_XP2002)
+#define WMC_XP_ANY 1
+#endif
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -57,7 +63,7 @@ size_t wmc_utf16_copy(WCHAR *dst, size_t cap, const char *src);
 void wmc_set_last_error(DWORD e);
 DWORD wmc_get_last_error(void);
 
-#ifdef WMC_XP
+#ifdef WMC_XP_ANY
 // kernel32_sync.c: closes an event or mutex handle; false if it is not one.
 bool wmc_sync_close(void *handle);
 #endif

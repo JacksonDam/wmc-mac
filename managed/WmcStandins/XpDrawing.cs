@@ -1,11 +1,11 @@
-// XP Media Center Edition 2005 builds folder thumbnails with System.Drawing,
+// XP Media Center Edition (2005 and 2002) builds folder thumbnails with System.Drawing,
 // drawing up to four small pictures into one. GDI+ on Windows draws nothing
 // for an empty source or destination; Mono's libgdiplus makes an
 // uninvertible cairo matrix of it and aborts the process, and some 24-bit
 // sources leave it in the same broken state. These take the place of its
 // two DrawImage calls (redirects.txt, [xp]): an empty draw is skipped, as
 // on Windows, and a source in another format is drawn from a 32-bit copy.
-#if XP
+#if XP || XP2002
 using System.Drawing;
 
 namespace WmcStandins
@@ -53,6 +53,24 @@ namespace WmcStandins
             Bitmap copy = Argb(image);
             g.DrawImage(copy ?? image, dest, srcX, srcY, srcWidth, srcHeight, unit);
             if (copy != null) copy.Dispose();
+        }
+
+        // (XP Media Center Edition 2002's: an integer rectangle, and source and destination rectangles)
+        public static void Graphics_DrawImage(Graphics g, Image image, int x, int y, int width, int height)
+        {
+            if (image == null || width <= 0 || height <= 0 || image.Width <= 0 || image.Height <= 0)
+            {
+                ComTodo.Log("draw", "DrawImage skipped: " + x + "," + y + " " + width + "x" + height);
+                return;
+            }
+            Bitmap copy = Argb(image);
+            g.DrawImage(copy ?? image, x, y, width, height);
+            if (copy != null) copy.Dispose();
+        }
+
+        public static void Graphics_DrawImage(Graphics g, Image image, Rectangle dest, Rectangle src, GraphicsUnit unit)
+        {
+            Graphics_DrawImage(g, image, dest, src.X, src.Y, src.Width, src.Height, unit);
         }
 
         public static void Graphics_DrawImage(Graphics g, Image image, RectangleF dest)

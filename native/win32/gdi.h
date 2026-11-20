@@ -13,3 +13,10 @@ HGDIOBJ wmc_gdi_object_create(int kind, void *payload, void (*destroy)(void *));
 void *wmc_gdi_object_payload(HGDIOBJ handle, int kind);
 int wmc_gdi_object_kind(HGDIOBJ handle);
 WINBOOL DeleteObject(HGDIOBJ handle);
+
+// A font's payload (WmcGdiFont): what CreateFontIndirectW was asked for.
+typedef struct {
+    char face[128];
+    float px;          // em height in the DC's units
+    bool bold, italic;
+} WmcFont;

@@ -27,6 +27,9 @@ static class Patcher
     // Calls whose leading string argument(s) are file paths, to be passed
     // through WmcStandins.Compat.FixPath first. The number is how many.
     static readonly Dictionary<string, int> s_paths = new Dictionary<string, int>();
+    // Casts to a type ("Type::castclass") made to another type of the same
+    // assembly instead: a COM class's interface, which a stand-in can be.
+    static readonly Dictionary<string, string> s_casts = new Dictionary<string, string>();
     // Every rule, and those that found something (the rest are reported: in
     // another Media Center version the type or method may be named otherwise).
     static readonly List<string> s_rules = new List<string>();
@@ -43,8 +46,8 @@ static class Patcher
             table = Path.Combine(root, "managed", "redirects.txt");
         }
         if (!File.Exists(table)) throw new FileNotFoundException("the table of calls to patch is missing", table);
-        // "[vista] rule" or "[7] rule": only when patching that Media Center
-        // (WMC_RELEASE, set by build.py).
+        // "[vista] rule", "[7] rule" or "[xp,xp2002] rule": only when patching
+        // that Media Center (WMC_RELEASE, set by build.py).
         string release = Environment.GetEnvironmentVariable("WMC_RELEASE") ?? "7";
         foreach (string raw in File.ReadAllLines(table))
         {
@@ -53,7 +56,7 @@ static class Patcher
             if (line.StartsWith("["))
             {
                 int close = line.IndexOf(']');
-                if (close < 0 || line.Substring(1, close - 1) != release) continue;
+                if (close < 0 || Array.IndexOf(line.Substring(1, close - 1).Split(','), release) < 0) continue;
                 line = line.Substring(close + 1).Trim();
             }
             string[] parts = line.Split(new[] { "=>" }, StringSplitOptions.None);
@@ -66,6 +69,7 @@ static class Patcher
             else if (what.StartsWith("@body ")) s_bodies[key] = what.Substring(6).Trim();
             else if (what == "@path") s_paths[key] = 1;
             else if (what == "@path2") s_paths[key] = 2;
+            else if (what.StartsWith("@cast ")) s_casts[key] = what.Substring(6).Trim();
             else s_redirects[key] = what;
         }
     }
@@ -150,7 +154,7 @@ static class Patcher
 
     static int ApplyRedirects(ModuleDefinition module)
     {
-        if (s_redirects.Count == 0 && s_defaults.Count == 0 && s_stubs.Count == 0 && s_guards.Count == 0 && s_bodies.Count == 0 && s_paths.Count == 0) return 0;
+        if (s_redirects.Count == 0 && s_defaults.Count == 0 && s_stubs.Count == 0 && s_guards.Count == 0 && s_bodies.Count == 0 && s_paths.Count == 0 && s_casts.Count == 0) return 0;
         int n = 0;
         foreach (var type in WmcTool.AllTypes(module).ToList())
         {
@@ -176,6 +180,19 @@ static class Patcher
                 LengthenBranches(m);
                 foreach (var ins in m.Body.Instructions.ToList())
                 {
+                    if (ins.OpCode == OpCodes.Castclass || ins.OpCode == OpCodes.Isinst)
+                    {
+                        var cast = ins.Operand as TypeReference;
+                        string to;
+                        if (cast != null && s_casts.TryGetValue(cast.FullName + "::castclass", out to))
+                        {
+                            s_used.Add(cast.FullName + "::castclass");
+                            int dot = to.LastIndexOf('.');
+                            ins.Operand = new TypeReference(dot < 0 ? "" : to.Substring(0, dot), to.Substring(dot + 1), module, cast.Scope);
+                            n++;
+                        }
+                        continue;
+                    }
                     if (ins.OpCode != OpCodes.Call && ins.OpCode != OpCodes.Callvirt && ins.OpCode != OpCodes.Newobj) continue;
                     var callee = ins.Operand as MethodReference;
                     if (callee == null) continue;

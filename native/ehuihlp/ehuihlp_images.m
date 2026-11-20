@@ -154,7 +154,7 @@ WMC_API void EhReleaseBitmapBuffer(void *data) {
     free(data);
 }
 
-#ifdef WMC_XP
+#ifdef WMC_XP_ANY
 // XP Media Center Edition's video thumbnails: a frame as 24-bit rows of the
 // same width, bottom row first (it reads them with a negative stride), in
 // memory it frees as CoTaskMem (malloc'd: Mono's CoTaskMem is the C heap).

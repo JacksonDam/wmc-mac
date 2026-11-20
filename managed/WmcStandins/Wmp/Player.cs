@@ -11,6 +11,8 @@ using WmcComBases;
 using ehiwmp;
 #if XP
 using Timer = eHome.UI.Timer;
+#elif XP2002
+using Timer = eHome.ComponentModel.Timer;
 #else
 using Timer = Microsoft.MediaCenter.UI.Timer;
 #endif
@@ -24,7 +26,7 @@ namespace WmcStandins.Wmp
         public static Player Instance { get { return s_instance ?? (s_instance = new Player()); } }
 
         readonly MediaCollection _collection = new MediaCollection();
-#if !XP
+#if !XP && !XP2002
         readonly Library _library;
 #endif
         readonly Controls _controls;
@@ -33,7 +35,9 @@ namespace WmcStandins.Wmp
         readonly CdromCollection _cdroms = new CdromCollection();
         readonly PlaylistCollection _playlists;
         readonly Random _random = new Random();
+#if !XP2002   // (Windows Media Player 8, XP Media Center Edition 2002's, has no player program object)
         readonly PlayerApplication _application = new PlayerApplication();
+#endif
 
         Playlist _playlist;
         MediaItem _media;
@@ -46,7 +50,7 @@ namespace WmcStandins.Wmp
 
         Player()
         {
-#if !XP
+#if !XP && !XP2002
             _library = new Library(_collection);
 #endif
             _controls = new Controls(this);
@@ -67,6 +71,12 @@ namespace WmcStandins.Wmp
         void WatchLibrary()
         {
             _libraryChanges = MediaLibrary.Changes;
+#if XP2002
+            // (XP Media Center Edition 2002 makes the player on its library's
+            // own thread, which has no timers: then the watch starts the first
+            // time the player is used from the UI thread)
+            if (eHome.ComponentModel.Dispatcher.CurrentDispatcher == null) return;
+#endif
             try
             {
                 _libraryWatch = new Timer();
@@ -293,19 +303,30 @@ namespace WmcStandins.Wmp
         public override IWMPControls get_controls() { return _controls; }
         public override IWMPSettings get_settings() { return Settings; }
         public override IWMPNetwork get_network() { return _network; }
-        public override IWMPMediaCollection get_mediaCollection() { return _collection; }
+        public override IWMPMediaCollection get_mediaCollection() { StartWatch(); return _collection; }
         public override IWMPPlaylistCollection get_playlistCollection() { return _playlists; }
         public override IWMPCdromCollection get_cdromCollection() { return _cdroms; }
+#if !XP2002
         public override IWMPPlayerApplication get_playerApplication() { return _application; }
+#endif
         public override IWMPError get_Error() { return null; }
         public override IWMPMedia get_currentMedia() { return _media; }
         public override IWMPPlaylist get_currentPlaylist() { return _playlist; }
-        public override WMPPlayState get_playState() { return _playState; }
+        public override WMPPlayState get_playState() { StartWatch(); return _playState; }
+
+        void StartWatch()
+        {
+#if XP2002
+            if (_libraryWatch == null) WatchLibrary();
+#endif
+        }
         public override WMPOpenState get_openState() { return _openState; }
         // Media Center drives the Player "remotely": as a control attached to
         // the user's own Windows Media Player and its library. Several of its
         // features (the watched folders among them) are tied to that mode.
+#if !XP2002   // (IWMPPlayer4: Windows Media Player 9 and later)
         public override bool get_isRemote() { return true; }
+#endif
         public override bool get_isOnline() { return true; }
         public override bool get_enabled() { return true; }
         public override void set_enabled(bool value) { }
@@ -327,7 +348,7 @@ namespace WmcStandins.Wmp
 
         void ConnectSkin()
         {
-#if !XP   // (XP Media Center Edition's visualizations are not connected yet)
+#if !XP && !XP2002   // (XP Media Center Edition's visualizations are not connected yet)
             var services = Site as IWMPRemoteMediaServices;
             if (services == null) return;
             try
@@ -394,15 +415,17 @@ namespace WmcStandins.Wmp
             if (Settings.AutoStart) Start(item); else SetCurrentItem(item);
         }
 
+#if !XP2002   // (IWMPCore3: Windows Media Player 9 and later)
         public override IWMPMedia newMedia(string url) { return MediaLibrary.Find(url) ?? MediaLibrary.Create(url); }
         public override IWMPPlaylist newPlaylist(string name, string url) { return new Playlist(name); }
+#endif
         public override void close()
         {
             Stop();
             _media = null;
         }
 
-#if !XP   // (library and folder services: not in Windows Media Player 10)
+#if !XP && !XP2002   // (library and folder services: not in Windows Media Player 10)
         // ---- IWMPLibraryServices, IWMPPlayerServices2 ---------------------------------
 
         public override int getCountByType(WMPLibraryType type)
@@ -474,7 +497,9 @@ namespace WmcStandins.Wmp
         }
         public override bool get_isAvailable(string item) { return true; }
         public override int get_currentMarker() { return 0; }
+#if !XP2002   // (IWMPControls3)
         public override int get_audioLanguageCount() { return 0; }
+#endif
     }
 
     public sealed class Settings : SettingsBase
@@ -519,10 +544,13 @@ namespace WmcStandins.Wmp
         }
         public override string get_baseURL() { return ""; }
         public override string get_defaultFrame() { return ""; }
+#if !XP2002   // (IWMPSettings2)
         public override string get_mediaAccessRights() { return "full"; }
         public override bool requestMediaAccessRights(string access) { return true; }
+#endif
     }
 
+#if !XP2002
     // The Player program itself. There is none: playback always stays with
     // the control inside Media Center ("docked").
     public sealed class PlayerApplication : PlayerApplicationBase
@@ -532,6 +560,7 @@ namespace WmcStandins.Wmp
         public override void switchToControl() { }
         public override void switchToPlayerApplication() { }
     }
+#endif
 
     // Local files need no buffering.
     public sealed class Network : NetworkBase

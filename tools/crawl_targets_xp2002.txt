@@ -1,0 +1,34 @@
+# XP Media Center Edition 2002: name : keys from the start menu. Its start
+# menu is a list that starts on My TV: My TV, My Music, My Pictures,
+# My Videos, Play DVD, Settings. In the libraries the left-hand menu has
+# the focus, and right goes into the gallery beside it.
+# `|` marks where the "before" frame is taken (default: before the last key).
+
+tv                   : enter
+music.library        : down enter
+pictures.library     : down down enter
+videos.library       : down down down enter
+dvd                  : down down down down enter
+settings             : down down down down down enter
+
+# Inside the libraries (the fixtures: folders Garden and Holiday and two
+# loose pictures; four albums; Colour Bars, Test Pattern, Waterfall, Windmill).
+music.album          : down enter wait3 enter wait3 enter
+music.artists        : down enter wait3 down enter
+music.songs          : down enter wait3 down down down enter
+pictures.open        : down down enter wait3 right enter
+pictures.picture     : down down enter wait3 right enter wait3 right enter
+pictures.slideshow   : down down enter wait3 enter
+videos.play          : down down down enter wait3 right enter
+videos.wmv           : down down down enter wait3 right right right enter
+videos.avi           : down down down enter wait3 right right right right enter
+
+# Settings.
+settings.general     : down down down down down enter wait2 enter
+settings.about       : down down down down down enter wait2 enter wait2 enter
+settings.sounds      : down down down down down enter wait2 enter wait2 down enter
+settings.tvdvd       : down down down down down enter wait2 down enter
+settings.pictures    : down down down down down enter wait2 down down enter
+
+# The mouse: My Music by a click.
+mouse.music          : click@530,368

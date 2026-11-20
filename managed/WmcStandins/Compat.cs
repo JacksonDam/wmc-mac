@@ -18,6 +18,7 @@ namespace WmcStandins
         {
         }
 
+#if !XP2002
         // COM classes that have a stand-in here are created as ordinary
         // managed objects.
         public static Type Type_GetTypeFromCLSID(Guid clsid)
@@ -39,6 +40,7 @@ namespace WmcStandins
             ComTodo.Hit("ActiveX control " + controlId);
             return null;
         }
+#endif
 
         // The Windows version and edition, which Media Center reads through
         // native code: what Windows 8 and later report to a program without a
@@ -65,6 +67,7 @@ namespace WmcStandins
             return Marshal.PtrToStringUni(ptr, length);
         }
 
+#if !XP2002
         // The site an ActiveX host gives its control (on Windows it goes into
         // native code). Kept for the control the host creates next.
         static readonly System.Collections.Generic.Dictionary<ServiceBus.UIFramework.AxHost, object> s_axSites =
@@ -74,6 +77,7 @@ namespace WmcStandins
         {
             lock (s_axSites) s_axSites[host] = site;
         }
+#endif
 
         // Not in Mono: the last Win32 error as an HRESULT.
         public static int Marshal_GetHRForLastWin32Error()
@@ -119,6 +123,7 @@ namespace WmcStandins
             return Environment.GetFolderPath(folder);
         }
 
+#if !XP2002
         // One of the small pictures on a folder's tile: `image` cropped to
         // 4:3 and scaled into the rectangle `rc` of the tile's own picture.
         // (Media Center draws this with GDI+, which Mono's stand-in for it
@@ -160,6 +165,7 @@ namespace WmcStandins
             }
             finally { bitmap.UnlockBits(data); }
         }
+#endif
 
         // The playback code's own log (a file on Windows, when switched on in
         // the registry): on the "trace" log channel here.
@@ -180,7 +186,7 @@ namespace WmcStandins
         // go to the Mac's player; everything else (discs, TV recordings,
         // network streams) to Media Center's own choice, which then reports
         // that it cannot start.
-#if !VISTA && !XP
+#if !VISTA && !XP && !XP2002
         public static string Playback_FindPlayerType(Uri uri, bool remote, out string assemblyName)
         {
             if (uri != null && uri.IsFile)
@@ -197,7 +203,7 @@ namespace WmcStandins
         }
 #endif
 
-#if !XP
+#if !XP && !XP2002
         // Is a file protected (Windows Media DRM), and what does its licence
         // allow? Nothing that can be opened here is protected.
         public static void Drm_Info(string file, Microsoft.MediaCenter.Interop.UIHelper.DRMInfoStruct info)

@@ -211,9 +211,10 @@ namespace WmcStandins.Wmp
         public override int get_markerCount() { return 0; }
         public override int get_imageSourceWidth() { return 0; }
         public override int get_imageSourceHeight() { return 0; }
+#if !XP2002   // (IWMPMedia3: Windows Media Player 9 and later)
         public override int getAttributeCountByType(string type, string language)
         {
-#if XP
+#if XP || XP2002
             // XP Media Center Edition loads an embedded picture by its URL,
             // which only Windows Media Player could serve; with none, it
             // takes the album's cover file (XpMusic.cs), as its other pages do.
@@ -229,6 +230,8 @@ namespace WmcStandins.Wmp
                 return ArtworkPath != null ? new MetadataPicture(ArtworkPath) : null;
             return Typed(type);
         }
+
+#endif
 
         // An attribute as the kind of value Windows Media Player gives for it:
         // dates as dates, lengths and ratings as numbers, the rest as text.
@@ -260,6 +263,7 @@ namespace WmcStandins.Wmp
         public override string ToString() { return Kind + ":" + Path; }
     }
 
+#if !XP2002
     // A picture attached to a media item. Type 3 is "front cover".
     public sealed class MetadataPicture : MetadataPictureBase
     {
@@ -270,6 +274,7 @@ namespace WmcStandins.Wmp
         public override string get_pictureType() { return "3"; }
         public override string get_Description() { return ""; }
     }
+#endif
 
     static class Native
     {

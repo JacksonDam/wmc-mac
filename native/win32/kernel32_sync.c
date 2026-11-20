@@ -8,10 +8,10 @@
 //
 // Its code was written for 32-bit Windows and often declares handles as
 // 32-bit integers, so these handles are small numbers (0x40000000 and up,
-// an index into a table), never pointers. Built for XP only (WMC_XP).
+// an index into a table), never pointers. Built for XP only (WMC_XP_ANY).
 #include "win32.h"
 
-#ifdef WMC_XP     // (Windows 7 and Vista: their stand-ins return at once, as before)
+#ifdef WMC_XP_ANY     // (Windows 7 and Vista: their stand-ins return at once, as before)
 
 #include <errno.h>
 #include <pthread.h>

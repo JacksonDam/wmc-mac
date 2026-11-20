@@ -12,7 +12,7 @@ namespace WmcStandins.Wmp
     // Conditions joined by "and", in groups joined by "or". (XP Media Center
     // Edition's Windows Media Player 10 has no queries: there it is only the
     // collections' own.)
-#if XP
+#if XP || XP2002
     public sealed class Query
 #else
     public sealed class Query : QueryBase
@@ -21,7 +21,7 @@ namespace WmcStandins.Wmp
         struct Condition { public string Attribute, Operator, Value; }
         readonly List<List<Condition>> _groups = new List<List<Condition>> { new List<Condition>() };
 
-#if XP
+#if XP || XP2002
         public void addCondition(string attribute, string op, string value)
 #else
         public override void addCondition(string attribute, string op, string value)
@@ -30,7 +30,7 @@ namespace WmcStandins.Wmp
             _groups[_groups.Count - 1].Add(new Condition { Attribute = attribute, Operator = op, Value = value ?? "" });
         }
 
-#if XP
+#if XP || XP2002
         public void beginNextGroup()
 #else
         public override void beginNextGroup()
@@ -202,7 +202,7 @@ namespace WmcStandins.Wmp
 
         public override int get_count() { return Groups.Count; }
         public override string Item(int index) { return index >= 0 && index < Groups.Count ? Groups[index].Value : ""; }
-#if !XP   // (IWMPStringCollection2: not in Windows Media Player 10)
+#if !XP && !XP2002   // (IWMPStringCollection2: not in Windows Media Player 10)
         public override bool isIdentical(IWMPStringCollection2 other) { return ReferenceEquals(other, this); }
         public override string getItemInfo(int index, string name)
         {
@@ -256,7 +256,7 @@ namespace WmcStandins.Wmp
             return q;
         }
 
-#if !XP   // (IWMPMediaCollection2: not in Windows Media Player 10)
+#if !XP && !XP2002   // (IWMPMediaCollection2: not in Windows Media Player 10)
         public override IWMPQuery createQuery() { return new Query(); }
 
         public override IWMPPlaylist getPlaylistByQuery(IWMPQuery query, string mediaType, string sortAttribute, bool ascending)
@@ -337,7 +337,7 @@ namespace WmcStandins.Wmp
         public override int getMediaAtom(string name) { return 0; }
     }
 
-#if !XP   // (IWMPLibrary: not in Windows Media Player 10)
+#if !XP && !XP2002   // (IWMPLibrary: not in Windows Media Player 10)
     public sealed class Library : LibraryBase
     {
         readonly MediaCollection _collection;

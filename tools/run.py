@@ -107,6 +107,12 @@ def main():
         import shutil
         shutil.rmtree(machine)
         shutil.rmtree(os.path.join(home, ".mono"), ignore_errors=True)
+    if first_run:
+        # (XP Media Center Edition 2002 keeps its first-run mark in its own settings file)
+        try:
+            os.remove(os.path.join(env["WMC_DRIVE_C"], "ProgramData", "Microsoft", "eHome", "ehshell.config"))
+        except FileNotFoundError:
+            pass
     if not os.path.isdir(machine):
         cmd = [sys.executable, "-I", os.path.join(ROOT, "tools", "setup_registry.py"),
                os.path.join(TREE, "registry.reg"), machine]

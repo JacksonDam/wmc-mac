@@ -10,7 +10,7 @@
 #include "win32.h"
 #include "paths.h"
 
-#ifdef WMC_XP
+#ifdef WMC_XP_ANY
 
 enum {
     SND_ASYNC = 0x1, SND_MEMORY = 0x4, SND_LOOP = 0x8, SND_NOSTOP = 0x10, SND_PURGE = 0x40,

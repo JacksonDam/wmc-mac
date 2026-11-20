@@ -55,6 +55,30 @@ bool wmc_gdi_bitmap_get(HBITMAP handle, int *width, int *height, void **bits) {
     return true;
 }
 
+// For managed stand-ins (System.Drawing's bitmaps as GDI bitmaps and back):
+// rows of 32-bit B G R A pixels, `stride` bytes apart, top row first.
+WMC_API HBITMAP wmc_gdi_bitmap_from_pixels(int width, int height, int stride, const void *pixels) {
+    void *bits = NULL;
+    HBITMAP h = wmc_gdi_bitmap_create(width, height, &bits);
+    if (!h || !pixels) return h;
+    for (int y = 0; y < height; y++)
+        memcpy((uint8_t *)bits + (size_t)y * (size_t)width * 4, (const uint8_t *)pixels + (size_t)y * (size_t)stride, (size_t)width * 4);
+    return h;
+}
+
+WMC_API int wmc_gdi_bitmap_size(HBITMAP handle, int *width, int *height) {
+    return wmc_gdi_bitmap_get(handle, width, height, NULL) ? 1 : 0;
+}
+
+WMC_API int wmc_gdi_bitmap_copy_pixels(HBITMAP handle, void *pixels, int stride) {
+    int width = 0, height = 0;
+    void *bits = NULL;
+    if (!wmc_gdi_bitmap_get(handle, &width, &height, &bits) || !pixels) return 0;
+    for (int y = 0; y < height; y++)
+        memcpy((uint8_t *)pixels + (size_t)y * (size_t)stride, (const uint8_t *)bits + (size_t)y * (size_t)width * 4, (size_t)width * 4);
+    return 1;
+}
+
 // Other kinds of object (fonts, device contexts) keep their state in a
 // payload owned by whoever created them.
 HGDIOBJ wmc_gdi_object_create(int kind, void *payload, void (*destroy)(void *)) {

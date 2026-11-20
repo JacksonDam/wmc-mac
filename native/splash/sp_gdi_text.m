@@ -15,11 +15,10 @@
 #import <Foundation/Foundation.h>
 #include "wmc.h"
 #include "win32/gdi.h"
-#include "splash_protocol.h"
 
 CTFontRef sp_create_font(NSString *face, CGFloat px, BOOL bold, BOOL italic);
 
-typedef struct Sp_Win32Api_RECT WRECT;
+typedef struct { int32_t left, top, right, bottom; } WRECT;   // (Windows' RECT)
 typedef struct { int32_t cx, cy; } WSIZE;
 typedef struct { int32_t a; uint32_t b; int32_t c; } WABC;
 typedef struct { int32_t w, h; } SpSizeI;
@@ -30,12 +29,6 @@ typedef struct {
     WCHAR lfFaceName[32];
 } WLOGFONTW;
 _Static_assert(sizeof(WLOGFONTW) == 92, "LOGFONTW layout");
-
-typedef struct {
-    char face[128];
-    float px;          // em height in the DC's units
-    bool bold, italic;
-} WmcFont;
 
 typedef struct {
     HGDIOBJ bitmap, font;

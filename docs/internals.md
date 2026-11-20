@@ -9,6 +9,7 @@ Notes for working on the project. The README covers using it.
 | `ehshell.exe` (starts the .NET runtime) | `WmcHost.exe` on Mono |
 | The .NET assemblies (`ehshell.dll`, `Microsoft.MediaCenter.UI.dll`, ...) | The same files, with a few mechanical metadata edits |
 | `EhUI.dll` (render engine, Direct3D 9) | `native/splash`: the same message protocol, drawn with Metal |
+| XP Media Center Edition 2002's `ehui.dll` (DirectUser) | `native/duser`: its protocol, drawn with Core Animation |
 | `ehuihlp.dll`, `user32`, `kernel32`, `gdi32`, ... | `native/win32`, `native/ehuihlp`: stand-ins in `libwmcshim.dylib` |
 
 The UI framework never draws. It describes its scene to the render engine in
@@ -167,6 +168,55 @@ managed (`WmcHost` calls its `UserControlPoint.Main`).
   catches go to the `err` and `exc` log channels (`eDebug`); `DrawImage`
   skips empty draws and draws other formats from a 32-bit copy (libgdiplus
   aborts on both); album covers come from the art cache.
+
+### Windows XP Media Center Edition 2002
+
+Its second CD is laid out as 2005's; `ehshell.exe` is 5.1.2600, by which
+`extract_iso.py`, `build.py` and `make_app.py` tell it from 2005 (release
+`xp2002`: C# with `XP2002`, the engine with `WMC_XP2002`, rules `[xp2002]`,
+built in `build-xp2002` as "Windows Media Center (XP 2002)"). Code shared
+with 2005's Windows stand-ins is under `WMC_XP_ANY`.
+
+- **Engine:** not Splash. The framework ("Fast", in `EhCM.dll`) drives
+  DirectUser's "Smooth" renderer in `ehui.dll` through three remote classes
+  found by name (`DUser::Smooth::RenderAgent`, `::FormWindow`,
+  `::AnimationHelper`), whose methods it is given numbers for by
+  `DUserSmoothFindClass`. Messages are posted to a proxy: the agent's own,
+  or any object's wrapped in `MessageForwarderProxy` with a trailer naming
+  the object and method; batches are lists in the framework's memory,
+  answered with "batch completed". Callbacks (event `0x8400`) go to the
+  framework's listener gadget, addressed by an object's handle. The layouts
+  are generated into `duser_protocol.h` (`wmctool layouts`, `Du_` names).
+  `native/duser` keeps visuals as Core Animation layers (a rectangle,
+  shown or not, alpha 0-255, scale about a point) drawn with render
+  operations made through `ehuihlp.dll`'s `EhSession*`, `EhImage*` and
+  `EhText*` (pictures, text with Core Text, fills); keyframe animations run
+  on a 60 Hz timer and report their end; keys and the mouse become its
+  keyboard and window-input callbacks. The tree is laid out in pixels and
+  shown scaled; maximised is the Mac's full screen. Its text flags are its
+  own: 0x20 is one line cut short with an ellipsis, anything else wraps.
+  `WMC_STEPS` adds `dump` (the visual tree, log channel `tree`).
+- **Pictures** are made with System.Drawing and handed over as GDI
+  bitmaps (`GetHbitmap`, `FromHbitmap`), which under Mono are libgdiplus's:
+  `Xp2002Drawing.cs` copies the pixels into and out of the stand-in's own
+  bitmaps. Thumbnails are cached in memory (`Photo*`).
+- **Music:** its Windows Media Player is made by `CreateOcxAndClientSite`
+  and cast to the COM class: a `@cast` rule makes the cast to its interface
+  (`WMPOCX`), which the WMP stand-in implements over Windows Media
+  Player 8's interfaces (`COM_BASES_XP2002`).
+- **Video:** `ehiPlay.FilePlayerClass` (`Xp2002Video.cs`), through the
+  shared player (`native/platform/video.m`). The player owns a surface, a
+  small number it hands the framework both as the inset video's "surface
+  owner" and as the full-screen "front buffer" (pre-scene render
+  operations, drawn under everything).
+- **Settings** are XML files (`ehshell.config`), not the registry; its
+  first-run mark is set from the registry's on first start
+  (`Xp2002Shell.cs`), so `--first-run` works as on the others.
+- **Other `[xp2002]` rules:** the guide loads without its download service
+  (an empty guide, no channels); there is no recording service; engine
+  callbacks and queued work are guarded; thread priorities are left alone
+  (Mono aborts on a finished thread's); `custsat.dll` is imported by
+  number, which `gen_stubs.py` maps to `custsat_<n>` stubs.
 
 ## Windows Media and AVI files
 
@@ -439,7 +489,8 @@ ref/        your own reference pictures and recordings of the real thing (not in
 managed/    wmctool (metadata tool, patcher, COM base generator), WmcStandins (Wmp, Playback,
             Input, Guard, Libraries, ...), WmcProbe, WmcHost, redirects.txt
 native/     core (logging, thread queue, paths), win32, ehuihlp, ehtrace, platform (AppKit,
-            media, FFmpeg, folder watching), splash (engine)
+            media, video, fonts, FFmpeg, folder watching), splash (engine), duser (XP Media
+            Center Edition 2002's engine)
 docs/       internals.md (this file), images/ (the README's diagram and its SVG source)
 tests/mcml  test pages
 ```

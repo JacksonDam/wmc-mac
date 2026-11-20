@@ -25,15 +25,26 @@ static class Host
         // (%windir%\ehome\...). The shim maps C:\Windows to the app folder.
         if (Environment.GetEnvironmentVariable("windir") == null) Environment.SetEnvironmentVariable("windir", @"C:\Windows");
         if (Environment.GetEnvironmentVariable("SystemRoot") == null) Environment.SetEnvironmentVariable("SystemRoot", @"C:\Windows");
+#if XP || XP2002
+        // XP Media Center Edition saves its per-user settings under this key
+        // only if it is there (it opens it, never creates it); on Windows its
+        // set-up made it.
+        Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Media Center").Close();
+#endif
+#if XP2002
+        WmcStandins.Xp2002Shell.PrepareSettings();   // (its first-run mark)
+#endif
         // Reading the tags of the music library can take a while the first
         // time: start on it now, so that it is ready when a library is opened.
+#if !XP2002
         ThreadPool.QueueUserWorkItem(delegate { WmcStandins.Wmp.MediaLibrary.Items.GetHashCode(); });
+#endif
         var app = new Thread(() =>
         {
             int code = 1;
             try
             {
-#if XP
+#if XP || XP2002
                 ServiceBus.UIFramework.UserControlPoint.Main(args);
                 code = 0;
                 Console.Error.WriteLine("host: Main returned");
