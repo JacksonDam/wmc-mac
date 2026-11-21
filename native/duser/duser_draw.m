@@ -103,9 +103,12 @@ enum { DT_CENTER = 1, DT_RIGHT = 2, TF_ELLIPSIS = 0x20 };
     return self;
 }
 
+// The text's size and layout are in the framework's units, whatever its
+// scale (EhTextSetScale, the screen's size over Media Center's own 1024 x
+// 768): the visual it is in is scaled by that much already. The scale only
+// says how sharp to draw it (render:).
 - (NSAttributedString *)attributed {
-    CGFloat scale = _scaleY > 0 ? _scaleY : 1;
-    CTFontRef font = sp_create_font(_face, _px * scale, _bold, _italic);
+    CTFontRef font = sp_create_font(_face, _px, _bold, _italic);
     uint32_t c = _color;
     CGColorRef color = CGColorCreateSRGB(((c >> 16) & 0xFF) / 255.0, ((c >> 8) & 0xFF) / 255.0, (c & 0xFF) / 255.0,
                                          (c >> 24) / 255.0);
@@ -122,7 +125,7 @@ enum { DT_CENTER = 1, DT_RIGHT = 2, TF_ELLIPSIS = 0x20 };
         (id)kCTForegroundColorAttributeName : (__bridge id)color,
         (id)kCTParagraphStyleAttributeName : (__bridge id)para,
     } mutableCopy];
-    if (_spacing != 0 && _spacing != 1) attrs[(id)kCTKernAttributeName] = @((_spacing - 1) * _px * scale * 0.5);
+    if (_spacing != 0 && _spacing != 1) attrs[(id)kCTKernAttributeName] = @((_spacing - 1) * _px * 0.5);
     NSAttributedString *s = [[NSAttributedString alloc] initWithString:_text ?: @"" attributes:attrs];
     CFRelease(font);
     CGColorRelease(color);
@@ -158,16 +161,20 @@ enum { DT_CENTER = 1, DT_RIGHT = 2, TF_ELLIPSIS = 0x20 };
     return CGSizeMake(ceil(size.width), ceil(size.height));
 }
 
-// The text drawn into a picture of its own size (or *size, if given).
+// The text drawn into a picture of its own size (or *size, if given), in
+// the framework's units; the picture has the text's scale times as many
+// pixels.
 - (CGImageRef)render:(CGSize *)size {
     CGSize want = size && size->width > 0 && size->height > 0 ? *size : [self measure:0];
     int w = (int)ceil(want.width), h = (int)ceil(want.height);
     if (w <= 0 || h <= 0) return NULL;
+    CGFloat scale = _scaleY > 0 ? _scaleY : 1;
     CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    CGContextRef ctx = CGBitmapContextCreate(NULL, (size_t)w, (size_t)h, 8, 0, space,
+    CGContextRef ctx = CGBitmapContextCreate(NULL, (size_t)ceil(w * scale), (size_t)ceil(h * scale), 8, 0, space,
                                              (CGBitmapInfo)kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
     CGColorSpaceRelease(space);
     if (!ctx) return NULL;
+    CGContextScaleCTM(ctx, scale, scale);
     uint32_t bk = _bkColor;
     if (bk >> 24) {
         CGContextSetRGBFillColor(ctx, ((bk >> 16) & 0xFF) / 255.0, ((bk >> 8) & 0xFF) / 255.0, (bk & 0xFF) / 255.0, (bk >> 24) / 255.0);

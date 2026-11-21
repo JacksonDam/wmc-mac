@@ -6,7 +6,7 @@ without Homebrew, an installer or administrator rights.
 
 Makes:
     DIR/7zip/7zz                   7-Zip for macOS (reads Windows disc images and .wim files)
-    DIR/mono/                      Mono 6.12.0.182: Homebrew's arm64 bottle, unpacked
+    DIR/mono/                      Mono 6.12.0.182: Homebrew's bottle, unpacked
     DIR/libgdiplus/lib/            Mono's GDI+ library (System.Drawing draws with it) and
                                    every library it loads, side by side, each finding the
                                    others next to itself (@loader_path)
@@ -19,10 +19,12 @@ At run time FONTCONFIG_FILE must name DIR/libgdiplus/etc/fonts/fonts.conf: the
 fontconfig library looks for its configuration under Homebrew's folder
 otherwise, which is not there.
 
-Mono and the libraries are Homebrew's builds for macOS 11 (Big Sur) on Apple
-silicon, pinned as homebrew-core had them in July 2023 (commit 5884b29): the
-same files on every Mac, and they run on macOS 11 and everything after it
-(Homebrew builds current versions only for the latest few macOS versions).
+Everything is for the Mac's own processor, Apple silicon (arm64) or Intel
+(x86_64). Mono and the libraries are Homebrew's builds for macOS 11 (Big
+Sur), pinned as homebrew-core had them in July 2023 (commit 5884b29): the
+same files on every Mac of a kind, and they run on macOS 11 and everything
+after it (Homebrew builds current versions only for the latest few macOS
+versions).
 Downloads (kept in DIR/dl) come from Homebrew's bottle store (ghcr.io) and
 7-Zip's own release, and each is checked against its SHA-256. Parts already in place and working are left
 alone, so running it again is cheap. Progress goes to stdout as "step: ..."
@@ -35,6 +37,7 @@ import hashlib
 import os
 import platform
 import shutil
+import struct
 import subprocess
 import sys
 import tarfile
@@ -44,38 +47,80 @@ import urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Homebrew's arm64_big_sur bottles, from homebrew-core at 5884b29 (2023-07-06):
-# formula -> (version, SHA-256 of the bottle).
+# The Mac's processor, and Homebrew's name for its macOS 11 bottles.
+ARCHS = ("arm64", "x86_64")
+ARCH = platform.machine()
+BOTTLE_TAG = {"arm64": "arm64_big_sur", "x86_64": "big_sur"}.get(ARCH, "")
+
+# Homebrew's bottles, from homebrew-core at 5884b29 (2023-07-06): formula ->
+# (version, its arm64_big_sur bottle, its big_sur bottle (Intel)), each
+# bottle (SHA-256, size in bytes).
 BOTTLE_URL = "https://ghcr.io/v2/homebrew/core/%s/blobs/sha256:%s"
-MONO = ("6.12.0.182", "1a755293d5bd0b4d646c752be882493bbd272b8502998f78b673091a9a5e78e8")
+MONO = ("6.12.0.182", ("1a755293d5bd0b4d646c752be882493bbd272b8502998f78b673091a9a5e78e8", 140347488),
+        ("c319b187b5b7881bae3139a38028af4ae09f55acdd0a23b5dfe1deb04bab4372", 163499626))
 PINNED = {
-    "cairo": ("1.16.0_5", "2fc4da6029167f696fc0b3c0553d36abb8e77c75f0096396d4eb89d0ea912612"),
-    "fontconfig": ("2.14.2", "5fea615f3524a847df9ea7e336a615fd4c8d9d8b2fb0e89b0e684173e6a1614c"),
-    "freetype": ("2.13.1", "5aad113162129820c2926641a203db43139f0bf9dc2d7ae1b8f090ab29fb7011"),
-    "fribidi": ("1.0.13", "d7c97dc2da426a3586d0c428f57d63300951ae23784769ebfdf3a4af0ab225f0"),
-    "gettext": ("0.21.1", "90da957f7b8ad3d47fff7045a684060168e0433631921463fbbff09b5dc4b772"),
-    "giflib": ("5.2.1", "e9a78b55a43f68f2552f845fff27d1c247ed865b1dd653f4c8ab259594411f86"),
-    "glib": ("2.76.3", "bcb6039c3186acc3505258c48c0305a9b62e289821dd11490e4a9004ea923df7"),
-    "graphite2": ("1.3.14", "544e2c344f6c0a7c2c3cb6541150f0d0d91cd1100460dac9c6a08578823f91c3"),
-    "harfbuzz": ("7.3.0_1", "5374fcd4378d6561c4c213f69b7a41edbdd4e7d0739b37951b6efe53f0ffb915"),
-    "jpeg-turbo": ("2.1.5.1", "9f88f50b6fb148d2edc5dd9138ee78e9d9c1a0f075e311b3a1398c6e43ca07df"),
-    "libexif": ("0.6.24", "89e01320edd8d164b9a885c8f72b08215e175cece967f6c86a9bcf472e4d85bc"),
-    "libpng": ("1.6.40", "bd0c0853926df0f1118b4b7f700ee7594cad881604fd76e711eeef1231700f50"),
-    "libtiff": ("4.5.1", "760ba837679b14af360309108cdc3e682ddfed4c969ac1cec744927a7fcab67e"),
-    "libx11": ("1.8.6", "5411fb6d4c702ee5413af825418e6157ca45f3d855710bcfc644bb0476cd207a"),
-    "libxau": ("1.0.11", "1bd9a72f005e6d7e746a95baf003b561756076623a074d7ea9d6fd0207d15eff"),
-    "libxcb": ("1.15_1", "42b2a0a1eee03d44c137195a485153f4a185bac30f64c5fffe28576fc8bbc611"),
-    "libxdmcp": ("1.1.4", "3846fc5ceb4900e7bedb3ab6bcb8569f9beef52a60a6c2dfe3d16897ee7058f4"),
-    "libxext": ("1.3.5", "232f1d192c14de36a9cb57dfedd73943d65fdd6ce3b75e80d4d0c2eb6c18dcd6"),
-    "libxrender": ("0.9.11", "2ed6a16e43342c1a068a59c7f250111d88ef0f7d7e0ae7c935cb979f09542a57"),
-    "mono-libgdiplus": ("6.1_2", "0d867f4956abbc40cbb77e02fa065e29f9b542cf62c241c8b9bdd63d1545386c"),
-    "pango": ("1.50.14", "34d3bddaee4e322f64cb8a65763702d0037dd65f100772665b71a0ac108708d0"),
-    "pcre2": ("10.42", "69483f445671a54f0e03f96b7ef41218913f793a84c32cf98de1e79aa029fbf1"),
-    "pixman": ("0.42.2", "999830935fa581f1598d56834060bbfd8dbe818513ab39a1a15b1b5e0ef2afd9"),
-    "xz": ("5.4.3", "f9d3283059582bf3eec0af86d8910e8409b0e1b092b7f018a9e7d6773f9ac4e4"),
-    "zstd": ("1.5.5", "faf929cf92dad72eca2b16fb5aedb695f5d291aac18b496061b8b14003b2e224"),
+    "cairo": ("1.16.0_5", ("2fc4da6029167f696fc0b3c0553d36abb8e77c75f0096396d4eb89d0ea912612", 1850450),
+        ("cb16c1bb070a7cdca7aaf8899a70e407d73636116d62225626b2c8d31aa8d2ff", 1857226)),
+    "fontconfig": ("2.14.2", ("5fea615f3524a847df9ea7e336a615fd4c8d9d8b2fb0e89b0e684173e6a1614c", 647374),
+        ("337bbb8f41116814b2060eccd4b08f8df7021453b204551afad230ef9f067661", 641886)),
+    "freetype": ("2.13.1", ("5aad113162129820c2926641a203db43139f0bf9dc2d7ae1b8f090ab29fb7011", 950666),
+        ("ae5f6d23acb94cd01039a950cdcc99917641fbdb1171f5aa3c78bafc5317c3c4", 980331)),
+    "fribidi": ("1.0.13", ("d7c97dc2da426a3586d0c428f57d63300951ae23784769ebfdf3a4af0ab225f0", 143990),
+        ("8ee3767e307b336a952f55d2c3c1a043bd2a8a88fc10889a7888e3c69207b105", 142338)),
+    "gettext": ("0.21.1", ("90da957f7b8ad3d47fff7045a684060168e0433631921463fbbff09b5dc4b772", 9277226),
+        ("95086fa8b1b6a913ca7ef3a7c7c49e147823c26ba239003f9140cfe1252587ba", 9264121)),
+    "giflib": ("5.2.1", ("e9a78b55a43f68f2552f845fff27d1c247ed865b1dd653f4c8ab259594411f86", 155710),
+        ("dc23500f50d599c4dbfcea0107b643bef41538c2f5fd162b049f82d21e3d32d5", 155102)),
+    "glib": ("2.76.3", ("bcb6039c3186acc3505258c48c0305a9b62e289821dd11490e4a9004ea923df7", 6838782),
+        ("0cf1ed67fcb0ed20bde83c4c7f7fa954ed5b7399c753f4b78c37730bd4cd2d22", 6590901)),
+    "graphite2": ("1.3.14", ("544e2c344f6c0a7c2c3cb6541150f0d0d91cd1100460dac9c6a08578823f91c3", 93108),
+        ("ddc468a1eec491aed5d5b05b22d0cffa38b6059d87eab747301011507fcf6366", 95647)),
+    "harfbuzz": ("7.3.0_1", ("5374fcd4378d6561c4c213f69b7a41edbdd4e7d0739b37951b6efe53f0ffb915", 2413033),
+        ("b59130fcc25f4cc7ed063e1f22f92789b2dc47f4c7072ecf99e5a811bddf12d5", 2560310)),
+    "jpeg-turbo": ("2.1.5.1", ("9f88f50b6fb148d2edc5dd9138ee78e9d9c1a0f075e311b3a1398c6e43ca07df", 849691),
+        ("88632579a1730a7be4ad57d23e46b54c522d2ae511c9184fae81612fc349e596", 943241)),
+    "libexif": ("0.6.24", ("89e01320edd8d164b9a885c8f72b08215e175cece967f6c86a9bcf472e4d85bc", 1044686),
+        ("e8f4e1e32cba740b59dd9dfeea98c45d6fecfb3e5f52553da7963c92a83bc632", 1025081)),
+    "libpng": ("1.6.40", ("bd0c0853926df0f1118b4b7f700ee7594cad881604fd76e711eeef1231700f50", 459758),
+        ("c4f83c1860a79daac87a140dce046a16bafae60f064c4f5b6d25d568db2bf695", 453463)),
+    "libtiff": ("4.5.1", ("760ba837679b14af360309108cdc3e682ddfed4c969ac1cec744927a7fcab67e", 1792525),
+        ("18bd9c73f730afa03c4c5dd3c9b23d810a827e32464d325beafd1499161e47ab", 1788596)),
+    "libx11": ("1.8.6", ("5411fb6d4c702ee5413af825418e6157ca45f3d855710bcfc644bb0476cd207a", 2247739),
+        ("e321aa3d735de0a2f4f7b2d5c6dde6184cc8590c348c3d1dd773fac892db6ecd", 2257997)),
+    "libxau": ("1.0.11", ("1bd9a72f005e6d7e746a95baf003b561756076623a074d7ea9d6fd0207d15eff", 31204),
+        ("306524aec65e6ea22e5d18fbf5b09f1a544fce2a9bc37349b3bc5d98a14d7984", 30341)),
+    "libxcb": ("1.15_1", ("42b2a0a1eee03d44c137195a485153f4a185bac30f64c5fffe28576fc8bbc611", 989047),
+        ("ba2af806eddb9db3f65ab2c462d749fbadd03dd30d1ee6c5493ee466855dcae2", 953535)),
+    "libxdmcp": ("1.1.4", ("3846fc5ceb4900e7bedb3ab6bcb8569f9beef52a60a6c2dfe3d16897ee7058f4", 36037),
+        ("2ed240f04f505a9472bc3f1988ba9be5edb9107795ab72f02a2ed7608d7de918", 35916)),
+    "libxext": ("1.3.5", ("232f1d192c14de36a9cb57dfedd73943d65fdd6ce3b75e80d4d0c2eb6c18dcd6", 107577),
+        ("674376b0e5cbcfb9278cdcf97e4ccc3910bf134cb1e45bf9e190d614a7f3a200", 108069)),
+    "libxrender": ("0.9.11", ("2ed6a16e43342c1a068a59c7f250111d88ef0f7d7e0ae7c935cb979f09542a57", 53311),
+        ("be6b3af9fd07f7a95bf2a70e1673383dca5ba972a6984ba359ea0c36be2dee44", 54375)),
+    "mono-libgdiplus": ("6.1_2", ("0d867f4956abbc40cbb77e02fa065e29f9b542cf62c241c8b9bdd63d1545386c", 362168),
+        ("8dc5b4a3e00eef554d5a96cf6978c6da43e60cccb9d623e22d913b426f050ae9", 380340)),
+    "pango": ("1.50.14", ("34d3bddaee4e322f64cb8a65763702d0037dd65f100772665b71a0ac108708d0", 830660),
+        ("8058dda295f5bd9a7fa01124a22b850285363fc9ab65e644bb037ad621475eb3", 797481)),
+    "pcre2": ("10.42", ("69483f445671a54f0e03f96b7ef41218913f793a84c32cf98de1e79aa029fbf1", 2084754),
+        ("1d858ca3171ba18bc70ca3980bafca1ce5ec65eb6550ff87d4f5facae0dd3b32", 2129081)),
+    "pixman": ("0.42.2", ("999830935fa581f1598d56834060bbfd8dbe818513ab39a1a15b1b5e0ef2afd9", 377610),
+        ("9c50d2fadad622cf5b80f24dffb5e5b2edfd0ff91927a2143ca27bbcd392a4c5", 523186)),
+    "xz": ("5.4.3", ("f9d3283059582bf3eec0af86d8910e8409b0e1b092b7f018a9e7d6773f9ac4e4", 670800),
+        ("cc402684eb7e9e81ea12b8721078c8fa1d36f2edd7ce41d0835282c00197fb0b", 671686)),
+    "zstd": ("1.5.5", ("faf929cf92dad72eca2b16fb5aedb695f5d291aac18b496061b8b14003b2e224", 814952),
+        ("73d78b5fef5ba31d3c37b8201310fe042f30c6000a97b8ba0d91208e1e1de231", 973820)),
 }
 MONO_VERSION = MONO[0]
+
+
+def ours(entry):
+    """(SHA-256, size) of this Mac's bottle in a MONO or PINNED entry."""
+    return entry[1 + ARCHS.index(ARCH)]
+
+
+def bottle_file(name, version):
+    return "%s-%s.%s.bottle.tar.gz" % (name, version, BOTTLE_TAG)
+
 
 FFMPEG_VERSION = "7.1.1"
 FFMPEG_URL = "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz"
@@ -87,8 +132,9 @@ FFMPEG_SHA256 = "733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b
 # codecs (Cinepak, Indeo, Microsoft Video 1 and RLE, uncompressed), and MP3,
 # MP2, AC-3, AAC, PCM and ADPCM sound. (All FFmpeg's own LGPL decoders.)
 FFMPEG_CONFIGURE = [
-    "--cc=clang", "--arch=arm64", "--target-os=darwin",
-    "--extra-cflags=-mmacosx-version-min=11.0", "--extra-ldflags=-mmacosx-version-min=11.0",
+    "--cc=clang", "--arch=" + ARCH, "--target-os=darwin",
+    "--extra-cflags=-arch %s -mmacosx-version-min=11.0" % ARCH,
+    "--extra-ldflags=-arch %s -mmacosx-version-min=11.0" % ARCH,
     "--disable-everything", "--disable-programs", "--disable-doc", "--disable-network",
     "--disable-autodetect", "--disable-debug", "--disable-shared", "--enable-static", "--enable-pic",
     "--disable-avdevice", "--disable-avfilter", "--enable-protocol=file", "--enable-demuxer=asf,avi",
@@ -99,23 +145,25 @@ FFMPEG_CONFIGURE = [
     # (The HEVC parser is there for what it brings with it: FFmpeg 7.1.1's
     # H.264 decoder needs the film grain code only HEVC's SEI support builds.)
     "--enable-parser=vc1,mpegaudio,mpeg4video,h264,mjpeg,mpegvideo,ac3,aac,hevc",
-]
-FFMPEG_MAKE_STEPS = 408     # compile steps with this configuration (for the progress shown)
+] + ([
+    # (FFmpeg's hand-written x86 assembly needs NASM, which a Mac does not
+    # come with: on Intel its C code does the work; the assembly only speeds
+    # decoding up.)
+    "--disable-x86asm",
+] if ARCH == "x86_64" else [])
+# Compile steps with this configuration (for the progress shown).
+FFMPEG_MAKE_STEPS = {"arm64": 408, "x86_64": 395}.get(ARCH, 408)
+FFMPEG_SIZE = 11019500
 
-# Every download and its size in bytes (for the progress shown while they come).
-SIZES = {
-    "7z2606-mac.tar.xz": 965712, "ffmpeg-7.1.1.tar.xz": 11019500,
-    "mono-6.12.0.182.arm64_big_sur.bottle.tar.gz": 140347488,
-    "cairo": 1850450, "fontconfig": 647374, "freetype": 950666, "fribidi": 143990, "gettext": 9277226,
-    "giflib": 155710, "glib": 6838782, "graphite2": 93108, "harfbuzz": 2413033, "jpeg-turbo": 849691,
-    "libexif": 1044686, "libpng": 459758, "libtiff": 1792525, "libx11": 2247739, "libxau": 31204,
-    "libxcb": 989047, "libxdmcp": 36037, "libxext": 107577, "libxrender": 53311, "mono-libgdiplus": 362168,
-    "pango": 830660, "pcre2": 2084754, "pixman": 377610, "xz": 670800, "zstd": 814952,
-}
-
+# 7-Zip's own builds for macOS: (file, SHA-256, size) for each processor.
 SEVENZIP_VERSION = "26.06"
-SEVENZIP_URL = "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-mac.tar.xz"
-SEVENZIP_SHA256 = "b6f17920b4240940461dac8ef4009891881ac44d2a5ead625ede2ec8472185dd"
+SEVENZIP_RELEASE = "https://github.com/ip7z/7zip/releases/download/26.06/"
+SEVENZIP = {
+    "arm64": ("7z2606-mac.tar.xz", "b6f17920b4240940461dac8ef4009891881ac44d2a5ead625ede2ec8472185dd", 965712),
+    "x86_64": ("7z2606-mac-x64.tar.xz", "3af68b124052da7fc2a246c96b0bea6a68bfee389baa788f4cead1a133445586", 1025228),
+}.get(ARCH, ("", "", 0))
+SEVENZIP_URL = SEVENZIP_RELEASE + SEVENZIP[0]
+SEVENZIP_SHA256 = SEVENZIP[1]
 
 USER_AGENT = "wmc-mac-setup"
 
@@ -205,8 +253,9 @@ def bottle(name, dl):
     """(path of the downloaded bottle, version) for one of the pinned formulae."""
     if name not in PINNED:
         raise SetupError("%s is needed but not among the pinned libraries" % name)
-    version, sha = PINNED[name]
-    path = os.path.join(dl, "%s-%s.arm64_big_sur.bottle.tar.gz" % (name, version))
+    version = PINNED[name][0]
+    sha = ours(PINNED[name])[0]
+    path = os.path.join(dl, bottle_file(name, version))
     if not os.path.exists(path) or sha256_of(path) != sha:
         step("downloading %s %s" % (name, version))
     download(BOTTLE_URL % (name, sha), sha, path)
@@ -238,6 +287,23 @@ def tar_lib(bottle_path, basename):
 # ---- Mach-O --------------------------------------------------------------------
 
 SYSTEM_PREFIXES = ("/usr/lib/", "/System/")
+HOMEBREW_PREFIXES = ("/opt/homebrew", "/usr/local")     # (Apple silicon's, Intel's)
+CPU_TYPES = {0x0100000C: "arm64", 0x01000007: "x86_64"}
+
+
+def mach_archs(path):
+    """The processors a Mach-O file has code for (empty: not a Mach-O file)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(8)
+            if head[:4] == b"\xcf\xfa\xed\xfe":                 # one processor's
+                return {CPU_TYPES.get(struct.unpack("<i", head[4:8])[0], "other")}
+            if head[:4] == b"\xca\xfe\xba\xbe":                 # several (big-endian table)
+                count = struct.unpack(">I", head[4:8])[0]
+                return {CPU_TYPES.get(struct.unpack(">i", f.read(20)[:4])[0], "other") for _ in range(count)}
+    except OSError:
+        pass
+    return set()
 
 
 def run(cmd):
@@ -278,10 +344,10 @@ def rpaths(path):
 def provider(dep, referrer_formula):
     """(formula, basename) for a non-system library reference."""
     base = os.path.basename(dep)
-    for marker in ("@@HOMEBREW_PREFIX@@/opt/", "/opt/homebrew/opt/"):
+    for marker in ("@@HOMEBREW_PREFIX@@/opt/", "/opt/homebrew/opt/", "/usr/local/opt/"):
         if dep.startswith(marker):
             return dep[len(marker):].split("/")[0], base
-    for marker in ("@@HOMEBREW_CELLAR@@/", "/opt/homebrew/Cellar/"):
+    for marker in ("@@HOMEBREW_CELLAR@@/", "/opt/homebrew/Cellar/", "/usr/local/Cellar/"):
         if dep.startswith(marker):
             return dep[len(marker):].split("/")[0], base
     if dep.startswith(("@rpath/", "@loader_path/", "@executable_path/")):
@@ -303,7 +369,7 @@ def check_portable(lib_dir):
                 continue
             problems.append("%s -> %s" % (name, dep))
         for rp in rpaths(path):
-            if "@@" in rp or rp.startswith("/opt/homebrew"):
+            if "@@" in rp or rp.startswith(HOMEBREW_PREFIXES):
                 problems.append("%s rpath %s" % (name, rp))
         if "@@" in (dylib_id(path) or ""):
             problems.append("%s id" % name)
@@ -315,7 +381,7 @@ def check_portable(lib_dir):
 def setup_7zip(tc):
     folder = os.path.join(tc, "7zip")
     exe = os.path.join(folder, "7zz")
-    if os.path.exists(exe):
+    if os.path.exists(exe) and ARCH in mach_archs(exe):
         r = subprocess.run([exe], capture_output=True, text=True)
         if SEVENZIP_VERSION in r.stdout:
             step("7-Zip %s is in place" % SEVENZIP_VERSION)
@@ -334,7 +400,9 @@ def mono_works(folder):
     exe = os.path.join(folder, "bin", "mono")
     needed = [exe, os.path.join(folder, "lib", "mono", "4.5", "csc.exe"),
               os.path.join(folder, "lib", "mono", "gac", "Mono.Cecil", "0.11.1.0__0738eb9f132ed756", "Mono.Cecil.dll")]
-    if not all(os.path.exists(p) for p in needed):
+    # (Another processor's Mono, from a work folder brought over from another
+    # Mac, may run, but the app's launcher cannot link with it.)
+    if not all(os.path.exists(p) for p in needed) or ARCH not in mach_archs(os.path.realpath(exe)):
         return False
     r = subprocess.run([exe, "--version"], capture_output=True, text=True)
     return r.returncode == 0 and ("version " + MONO_VERSION) in r.stdout
@@ -346,8 +414,8 @@ def setup_mono(tc):
         step("Mono %s is in place" % MONO_VERSION)
         return
     dl = os.path.join(tc, "dl")
-    path = download(BOTTLE_URL % ("mono", MONO[1]), MONO[1],
-                    os.path.join(dl, "mono-%s.arm64_big_sur.bottle.tar.gz" % MONO_VERSION))
+    sha = ours(MONO)[0]
+    path = download(BOTTLE_URL % ("mono", sha), sha, os.path.join(dl, bottle_file("mono", MONO_VERSION)))
     step("unpacking Mono")
     partial = folder + ".partial"
     shutil.rmtree(partial, ignore_errors=True)
@@ -376,8 +444,9 @@ def setup_gdiplus(tc):
     fonts = os.path.join(folder, "etc", "fonts", "fonts.conf")
     marker = os.path.join(folder, ".complete")
     # The marker names the pinned set the libraries came from: another set
-    # (an older toolchain's) is replaced, even if it loads.
-    fingerprint = "pinned " + hashlib.sha256(repr(sorted(PINNED.items())).encode()).hexdigest()[:16]
+    # (an older toolchain's, or another processor's) is replaced, even if it loads.
+    pinned = sorted((name, (entry[0], ours(entry)[0])) for name, entry in PINNED.items())
+    fingerprint = "pinned " + hashlib.sha256(repr(pinned).encode()).hexdigest()[:16]
     current = open(marker).readline().strip() if os.path.exists(marker) else ""
     if current == fingerprint and os.path.exists(main) and not check_portable(lib_dir) and loads(main):
         write_fonts_conf(fonts)
@@ -503,14 +572,11 @@ def part_of(path):
 def downloads(tc):
     """Every file the toolchain needs: (url, sha256, path, size)."""
     dl = os.path.join(tc, "dl")
-    items = [(SEVENZIP_URL, SEVENZIP_SHA256, os.path.join(dl, os.path.basename(SEVENZIP_URL)), SIZES["7z2606-mac.tar.xz"]),
-             (FFMPEG_URL, FFMPEG_SHA256, os.path.join(dl, os.path.basename(FFMPEG_URL)), SIZES["ffmpeg-7.1.1.tar.xz"]),
-             (BOTTLE_URL % ("mono", MONO[1]), MONO[1],
-              os.path.join(dl, "mono-%s.arm64_big_sur.bottle.tar.gz" % MONO_VERSION),
-              SIZES["mono-6.12.0.182.arm64_big_sur.bottle.tar.gz"])]
-    for name, (version, sha) in sorted(PINNED.items()):
-        items.append((BOTTLE_URL % (name, sha), sha,
-                      os.path.join(dl, "%s-%s.arm64_big_sur.bottle.tar.gz" % (name, version)), SIZES[name]))
+    items = [(SEVENZIP_URL, SEVENZIP_SHA256, os.path.join(dl, SEVENZIP[0]), SEVENZIP[2]),
+             (FFMPEG_URL, FFMPEG_SHA256, os.path.join(dl, os.path.basename(FFMPEG_URL)), FFMPEG_SIZE)]
+    for name, entry in [("mono", MONO)] + sorted(PINNED.items()):
+        sha, size = ours(entry)
+        items.append((BOTTLE_URL % (name, sha), sha, os.path.join(dl, bottle_file(name, entry[0])), size))
     return items
 
 
@@ -586,11 +652,10 @@ def setup_ffmpeg(tc):
 
 
 def prune_downloads(tc):
-    """Removes downloads no longer part of the pinned set (an older toolchain's)."""
+    """Removes downloads no longer part of the pinned set (an older
+    toolchain's, or another processor's)."""
     dl = os.path.join(tc, "dl")
-    keep = {os.path.basename(SEVENZIP_URL), os.path.basename(FFMPEG_URL),
-            "mono-%s.arm64_big_sur.bottle.tar.gz" % MONO_VERSION}
-    keep |= {"%s-%s.arm64_big_sur.bottle.tar.gz" % (n, v) for n, (v, _sha) in PINNED.items()}
+    keep = {os.path.basename(path) for _url, _sha, path, _size in downloads(tc)}
     for name in os.listdir(dl) if os.path.isdir(dl) else []:
         if name not in keep and not name.endswith(".part"):   # (another run may be fetching it)
             os.remove(os.path.join(dl, name))
@@ -608,8 +673,8 @@ def main():
             parts = args.pop(0).split(",")
         else:
             sys.exit(__doc__)
-    if platform.machine() != "arm64":
-        print("error: this needs a Mac with Apple silicon", flush=True)
+    if ARCH not in ARCHS:
+        print("error: this needs a Mac with Apple silicon or an Intel processor (this one has %s)" % ARCH, flush=True)
         sys.exit(1)
     try:
         os.makedirs(tc, exist_ok=True)

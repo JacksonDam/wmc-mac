@@ -35,9 +35,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
 sys.path.insert(0, TOOLS)
 import peinfo  # noqa: E402
+import setup_toolchain  # noqa: E402
 
 BUNDLE_ID = "local.wmc-mac.media-center"           # Vista's: + "-vista", XP's: + "-xp" (2002's "-xp2002")
 MACOS_MIN = (11, 0)     # the oldest macOS the app runs on (Big Sur)
+ARCH = setup_toolchain.ARCH     # this Mac's processor (arm64 or x86_64): the app is made for it
 
 
 def shell_file(ehome):
@@ -310,6 +312,21 @@ def too_new(app):
     return found
 
 
+def not_for_this_mac(app):
+    """The programs and libraries in the app without code for this Mac's
+    processor."""
+    found = []
+    for folder, _dirs, files in os.walk(app):
+        for name in files:
+            path = os.path.join(folder, name)
+            if os.path.islink(path):
+                continue
+            archs = setup_toolchain.mach_archs(path)
+            if archs and ARCH not in archs:
+                found.append("%s (%s)" % (os.path.relpath(path, app), ", ".join(sorted(archs))))
+    return found
+
+
 def make_icon(ehome, out_icns, scratch):
     """The app icon, from Media Center's own (in ehshell.dll; XP Media Center
     Edition keeps its green button in ehres.dll)."""
@@ -345,7 +362,7 @@ def assemble(name, source, build_dir, toolchain, work):
 
     # The launcher, linked against Mono's runtime library in the app.
     launcher = os.path.join(contents, "MacOS", name)
-    r = subprocess.run(["clang", "-arch", "arm64", "-mmacosx-version-min=%d.%d" % MACOS_MIN, "-O2", "-Wall",
+    r = subprocess.run(["clang", "-arch", ARCH, "-mmacosx-version-min=%d.%d" % MACOS_MIN, "-O2", "-Wall",
                         "-o", launcher, os.path.join(TOOLS, "app", "launcher.c"),
                         "-L" + os.path.join(toolchain, "mono", "lib"), "-lmonosgen-2.0",
                         "-Wl,-rpath,@executable_path/../Resources/mono/lib"], capture_output=True, text=True)
@@ -406,6 +423,9 @@ def assemble(name, source, build_dir, toolchain, work):
     newer = too_new(app)
     if newer:
         fail("parts of the app need a newer macOS than %d.%d: %s" % (MACOS_MIN + (", ".join(newer[:5]),)))
+    other = not_for_this_mac(app)
+    if other:
+        fail("parts of the app are not for this Mac's processor (%s): %s" % (ARCH, ", ".join(other[:5])))
 
     step("Signing the app for this Mac")
     r = subprocess.run(["codesign", "--force", "--deep", "--sign", "-", app], capture_output=True, text=True)

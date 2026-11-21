@@ -518,7 +518,8 @@ static class Patcher
     }
 
     // C++/CLI assemblies carry x64 machine code beside their IL. That code
-    // cannot run on Apple silicon, so methods implemented natively become
+    // is Windows code, which cannot run on a Mac (an Intel one included:
+    // Mono runs mixed assemblies only on Windows), so methods implemented natively become
     // IL stubs that throw, and the module is marked IL-only so it loads.
     // Stand-ins replace the ones that matter (see managed/standins).
     static int NeutraliseNativeCode(ModuleDefinition module)

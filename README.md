@@ -6,7 +6,7 @@
 
 Take Windows Media Center from a Windows 7, Windows Vista or Windows XP
 Media Center Edition 2005 or 2002 disc image and make a Mac app of it that runs
-natively on Apple silicon. It is your responsibility to have a legally-obtained copy of Windows 7 SP1 or Windows Vista SP2 (64-bit), or of Windows XP Media Center Edition 2005 or 2002.
+natively on Apple silicon and Intel Macs. It is your responsibility to have a legally-obtained copy of Windows 7 SP1 or Windows Vista SP2 (64-bit), or of Windows XP Media Center Edition 2005 or 2002.
 
 Apart from the screenshots above, nothing of Microsoft's is in this
 repository, the installer or the tools.
@@ -43,13 +43,15 @@ pages don't open yet, and My TV waits at "Starting TV".
 
 Tested with the English Windows 7 SP1 and Windows Vista SP2 discs (Home
 Premium, 64-bit) and the English Windows XP Media Center Edition 2005 and
-2002 CD 2 on macOS 27. It is built for macOS 11 and later, but has not been run on macOS 11
-yet; discs in other languages and Retina displays are untested.
+2002 CD 2 on macOS 27, on Apple silicon and (through Rosetta) as an Intel
+Mac. It is built for macOS 11 and later, but has not been run on macOS 11
+or on an Intel Mac itself yet; discs in other languages and Retina
+displays are untested.
 
 ## How it works
 
 Media Center is mostly .NET code, which runs unchanged on Mono, natively on
-arm64. Only its native half is replaced: the render engine is redrawn with
+the Mac's processor. Only its native half is replaced: the render engine is redrawn with
 Metal (with Core Animation for XP Media Center Edition 2002, whose engine is
 another), and the Windows functions Media Center calls are written anew for
 the Mac. Windows Media and AVI files (`.wmv`, `.wma`, `.avi`) play through
@@ -61,7 +63,7 @@ FFmpeg's libraries (LGPL), built on your Mac with only those formats.
 
 ## Make the app
 
-You need an Apple silicon Mac with macOS 11 (Big Sur) or later and a disc
+You need a Mac (Apple silicon or Intel) with macOS 11 (Big Sur) or later and a disc
 image (`.iso`) with Media Center: a 64-bit Windows 7 Home Premium,
 Professional, Ultimate or Enterprise, a 64-bit Windows Vista Home Premium
 or Ultimate, or the second CD of Windows XP Media Center Edition 2005 or 2002.
@@ -81,7 +83,7 @@ tools/make_app.sh ~/Downloads/windows7.iso
 
 Both install Apple's Command Line Tools if they are missing (macOS shows a
 dialog) and get the rest themselves: 7-Zip, Mono, Mono's picture library and
-FFmpeg. The first run downloads about 190 MB and takes under a minute to 
+FFmpeg. The first run downloads about 190 MB (210 MB on Intel) and takes under a minute to 
 build on an M4 Mac mini; repeat builds take about 20 seconds. **Windows Media 
 Center.app** (about 240 MB), or **Windows Media Center (Vista).app**,
 **Windows Media Center (XP).app** or **Windows Media Center (XP 2002).app**

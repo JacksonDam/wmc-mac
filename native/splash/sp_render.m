@@ -644,10 +644,16 @@ static void dump_pools(SpWindow *window, NSString *folder) {
                                                                                 height:(NSUInteger)height
                                                                              mipmapped:NO];
     d.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
-    d.storageMode = MTLStorageModeShared;
+    // Managed: a texture the processor can read back on every Mac (Intel
+    // Macs' graphics have memory of their own, and textures cannot be
+    // Shared there). What was drawn is copied back for reading.
+    d.storageMode = MTLStorageModeManaged;
     id<MTLTexture> target = [_device newTextureWithDescriptor:d];
     id<MTLCommandBuffer> cb = [_queue commandBuffer];
     [self render:window target:target commandBuffer:cb];
+    id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    [blit synchronizeResource:target];
+    [blit endEncoding];
     [cb commit];
     [cb waitUntilCompleted];
     NSMutableData *pixels = [NSMutableData dataWithLength:(NSUInteger)width * (NSUInteger)height * 4];

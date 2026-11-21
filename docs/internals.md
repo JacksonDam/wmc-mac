@@ -33,10 +33,25 @@ tools/run.py --show WmcHost
 Media codecs: about 20 seconds). Everything is checked by SHA-256 and
 fetched with the system's `curl`, eight at a time (Python's `urllib` was
 often 30 times slower over HTTPS). `--parts` sets up only some of it.
-The bottles are Homebrew's builds for macOS 11 on Apple silicon, pinned as
-homebrew-core had them in July 2023, and used on every Mac: Homebrew builds
-current versions only for the latest few macOS versions, and the official
-Mono package for macOS is Intel-only.
+The bottles are Homebrew's builds for macOS 11, pinned as homebrew-core
+had them in July 2023, and used on every Mac: Homebrew builds current
+versions only for the latest few macOS versions, and the official Mono
+package for macOS is Intel-only.
+
+Everything is made for the Mac's own processor (`platform.machine()`):
+Homebrew's `arm64_big_sur` bottles and 7-Zip's arm64 build on Apple
+silicon, the `big_sur` bottles and 7-Zip's `-x64` build on Intel, and the
+native code, FFmpeg and the app's launcher compiled with that `-arch`. On
+Intel, FFmpeg is built without its hand-written assembly (`--disable-x86asm`:
+it needs NASM, which macOS does not have). Offscreen snapshots (the start
+check, crawls) read the picture back through a Managed texture, since an
+Intel Mac's graphics cannot share a texture with the processor. The installer is one universal
+program that makes the app for the Mac it runs on, and `make_app.py`
+refuses an app with any program or library for another processor; a
+toolchain left by another Mac (a work folder brought over by Migration
+Assistant) is replaced, not used. Running the installer under Rosetta
+(`arch -x86_64 ".../Media Center Installer" --source ... --snapshots ...`)
+makes and checks an Intel app on an Apple silicon Mac.
 
 ## macOS 11
 

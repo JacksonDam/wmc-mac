@@ -19,7 +19,7 @@
   <g fill="#ffffff" text-anchor="middle">
     <!-- Column captions -->
     <text x="505" y="90" font-size="22" font-weight="700">Media Center</text>
-    <text x="505" y="114" font-size="14" fill="#a9bddf">from your Windows 7 disc, run by Mono on arm64</text>
+    <text x="505" y="114" font-size="14" fill="#a9bddf">from your Windows 7 disc, run by Mono</text>
     <text x="980" y="90" font-size="22" font-weight="700">This project</text>
     <text x="980" y="114" font-size="14" fill="#a9bddf">translation layer</text>
     <text x="1275" y="90" font-size="22" font-weight="700">macOS</text>

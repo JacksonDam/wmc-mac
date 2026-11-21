@@ -11,8 +11,14 @@ app="$out/Media Center Installer.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/project"
 
-xcrun swiftc -parse-as-library -O -target arm64-apple-macos11.0 \
-    -o "$app/Contents/MacOS/Media Center Installer" installer/Sources/*.swift
+# One program for both kinds of Mac (Apple silicon and Intel); it makes the
+# Media Center app for the Mac it runs on.
+for arch in arm64 x86_64; do
+    xcrun swiftc -parse-as-library -O -target $arch-apple-macos11.0 \
+        -o "$out/installer-$arch" installer/Sources/*.swift
+done
+lipo -create -output "$app/Contents/MacOS/Media Center Installer" "$out/installer-arm64" "$out/installer-x86_64"
+rm "$out/installer-arm64" "$out/installer-x86_64"
 
 project="$app/Contents/Resources/project"
 mkdir -p "$project/tools/app" "$project/managed"

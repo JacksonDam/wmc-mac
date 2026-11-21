@@ -13,6 +13,7 @@ Outputs  build/tools/wmctool.exe   the metadata tool
          build/refs/               compile-time reference copies (all public)
 """
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -188,10 +189,13 @@ def step_gen():
 # The oldest macOS the result runs on. Using anything newer without an
 # @available check is an error, not a warning.
 MACOS_MIN = "11.0"
+# The Mac's own processor (arm64 or x86_64), as the toolchain's Mono and
+# FFmpeg are (tools/setup_toolchain.py).
+ARCH = platform.machine()
 # FFmpeg (tools/setup_toolchain.py builds it): Windows Media playback.
 FFMPEG = os.path.join(TOOLCHAIN, "ffmpeg")
 FFMPEG_LIBS = ["avformat", "avcodec", "swscale", "swresample", "avutil"]
-CFLAGS = ["-arch", "arm64", "-O1", "-g", "-fvisibility=hidden",
+CFLAGS = ["-arch", ARCH, "-O1", "-g", "-fvisibility=hidden",
           "-Wall", "-Wno-unused-function", "-Wno-deprecated-declarations",
           "-mmacosx-version-min=" + MACOS_MIN, "-Werror=unguarded-availability-new",
           "-I" + os.path.join(FFMPEG, "include")]
@@ -243,7 +247,7 @@ def step_native():
         f.write(flags)
     if not os.path.exists(os.path.join(FFMPEG, "lib", "libavcodec.a")):
         sys.exit("FFmpeg is missing from %s (run tools/setup_toolchain.py)" % TOOLCHAIN)
-    link = ["clang", "-dynamiclib", "-arch", "arm64", "-mmacosx-version-min=" + MACOS_MIN,
+    link = ["clang", "-dynamiclib", "-arch", ARCH, "-mmacosx-version-min=" + MACOS_MIN,
             "-o", DYLIB, "-install_name", "@rpath/libwmcshim.dylib"] + objs
     link += [os.path.join(FFMPEG, "lib", "lib%s.a" % name) for name in FFMPEG_LIBS]
     for fw in FRAMEWORKS:
