@@ -44,9 +44,9 @@ pages don't open yet, and My TV waits at "Starting TV".
 Tested with the English Windows 7 SP1 and Windows Vista SP2 discs (Home
 Premium, 64-bit) and the English Windows XP Media Center Edition 2005 and
 2002 CD 2 on macOS 27, on Apple silicon and (through Rosetta) as an Intel
-Mac. It is built for macOS 11 and later, but has not been run on macOS 11
-or on an Intel Mac itself yet; discs in other languages and Retina
-displays are untested.
+Mac. It is built for macOS 11 and later, but functionality on Intel Macs 
+has not yet been fully tested; discs in other languages and display scaling
+behaviour are untested.
 
 ## How it works
 
